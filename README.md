@@ -1,0 +1,4 @@
+```bash
+yarn
+npm start
+```

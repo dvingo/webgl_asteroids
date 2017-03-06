@@ -5,6 +5,21 @@
     <title>Asteroids</title>
   </head>
   <body>
+    <script type="vertex" id="vs">
+    attribute vec4 position;
+    uniform mat4 u_matrix;
+
+    void main() {
+     gl_Position = (u_matrix * position);
+    }
+    </script>
+    <script type="fragment" id="fs">
+    precision mediump float;
+    void main() {
+      gl_FragColor = vec4(.99, .99, .99, 1.);
+    }
+    </script>
+    <script src="/js/gl-matrix.js"></script>
     <script src="/dist/bundle.js" charset="utf-8"></script>
   </body>
 </html>
