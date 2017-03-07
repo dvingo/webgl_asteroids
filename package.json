@@ -1,11 +1,12 @@
 {
   "scripts": {
     "build": "webpack",
-    "start": "webpack --watch"
+    "start": "webpack-dev-server"
   },
   "dependencies": {
     "chroma-js": "^1.2.2",
     "twgl.js": "^3.2.0",
-    "webpack": "^2.2.1"
+    "webpack": "^2.2.1",
+    "webpack-dev-server": "^2.4.1"
   }
 }

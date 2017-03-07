@@ -7,10 +7,11 @@
   <body>
     <script type="vertex" id="vs">
     attribute vec4 position;
-    uniform mat4 u_matrix;
+    uniform mat4 u_viewProjection;
+    uniform mat4 u_model;
 
     void main() {
-     gl_Position = (u_matrix * position);
+     gl_Position = (u_viewProjection *  u_model  * position);
     }
     </script>
     <script type="fragment" id="fs">
@@ -20,6 +21,6 @@
     }
     </script>
     <script src="/js/gl-matrix.js"></script>
-    <script src="/dist/bundle.js" charset="utf-8"></script>
+    <script src="/bundle.js" charset="utf-8"></script>
   </body>
 </html>
