@@ -95,7 +95,7 @@ function main(data) {
   var camera = m4.identity();
   var view = m4.identity();
   var viewProjection = m4.identity();
-  var eye = [0, 400, 1]
+  var eye = [0, 100, 1]
   var target = [0, 0, 0]
   var up = [0, 1, 0]
   var modelM = m4.identity()
@@ -159,13 +159,10 @@ function main(data) {
     }
   if (shipViewLoc[0] > 1) {
     console.log('ship is off right: ', shipLoc);
-
-    // var halfW = (gl.canvas.clientWidth/2)
-    // m4.inverse(uniforms.u_viewProjection, viewProjectInverse)
-    // var tr = m4.transformPoint(viewProjectInverse, [halfW, 0, 0])
-    var tr = m4.getTranslation(uniforms.u_model)
-
-    m4.setTranslation(uniforms.u_model, [-tr[0], 0, 0], uniforms.u_model)
+    m4.inverse(uniforms.u_viewProjection, viewProjectInverse)
+    var tr = m4.transformPoint(viewProjectInverse, [-1, eye[1], 1])
+    console.log('tr: ', tr);
+    m4.setTranslation(uniforms.u_model, [tr[0], 0, 0], uniforms.u_model)
   }
 
     gl.useProgram(programInfo.program)
