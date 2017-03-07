@@ -1,10 +1,8 @@
 import twgl from 'twgl.js'
 import chroma from 'chroma-js'
 import parseModel from './parseJson'
-console.log('parseModel: ', parseModel );
 const { m4, v3 } = twgl
 window.twgl = twgl
-console.log('hellow3', twgl);
 
 const createEl = document.createElement.bind(document)
 Node.prototype.on = function(){this.addEventListener.apply(this,arguments)}
@@ -66,8 +64,23 @@ const uniforms = {
   u_model: m4.identity()
 }
 
+var throttle = (fn, timeMs) => {
+  let wasCalled = false
+  return function() {
+    let args = arguments
+    if (!wasCalled) {
+      wasCalled = true
+      setTimeout(function() {
+        wasCalled = false
+        fn.apply(null, args)
+      }, timeMs)
+    }
+  }
+}
+
+const log = throttle((...args) => console.log.apply(console, args), 1000)
+
 function main(data) {
-  console.log('main data: ', data);
   var faceData = parseModel.parseJson(data)
   var indices = parseModel.getIndicesFromFaces(faceData)
   const arrays = {
@@ -82,27 +95,13 @@ function main(data) {
   var camera = m4.identity();
   var view = m4.identity();
   var viewProjection = m4.identity();
-  var eye = [0, 350, 1]
+  var eye = [0, 400, 1]
   var target = [0, 0, 0]
   var up = [0, 1, 0]
   var modelM = m4.identity()
   var ship = {
     velocity: [0, 0, 0],
     moveM: m4.translation(vec3.create(1, 0, 0))
-  }
-
-  var throttle = (fn, timeMs) => {
-    let wasCalled = false
-    return function() {
-      let args = arguments
-      if (!wasCalled) {
-        wasCalled = true
-        setTimeout(function() {
-          wasCalled = false
-          fn.apply(null, args)
-        }, timeMs)
-      }
-    }
   }
 
   const keyToName = {
@@ -115,6 +114,7 @@ function main(data) {
 
   const validKeys = Object.keys(keyToName).map(Number)
   window.uniforms = uniforms
+  window.m4 = m4
   window.addEventListener('keydown', throttle(({keyCode}) => {
     if (validKeys.indexOf(keyCode) < 0) { return }
     console.log('got keydown: ', keyToName[keyCode])
@@ -127,26 +127,19 @@ function main(data) {
     }
   }, 30))
 
-  const log = throttle((...args) => console.log.apply(console, args), 1000)
-
   var shipPoint = [arrays.position.data[0], arrays.position.data[1], arrays.position.data[2]]
-  console.log('ship point: ', shipPoint, ' translated: ',
-    m4.transformPoint(uniforms.u_model, shipPoint))
-
   var shipLoc = [], shipViewLoc = []
   var viewProjectInverse = m4.identity()
 
   gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
   var aspect = gl.canvas.clientWidth / gl.canvas.clientHeight
   var projection = m4.perspective(30 * Math.PI/180, aspect, .5, 400)
-
   camera = m4.lookAt(eye, target, up)
   view = m4.inverse(camera)
   uniforms.u_viewProjection = m4.multiply(projection, view)
 
   var clipSpaceCoord = m4.transformPoint(uniforms.u_viewProjection, shipPoint)
   var shipStartX = Math.round(((clipSpaceCoord[0] + 1 ) / 2.0) * gl.canvas.clientWidth)
-  console.log('STARTING window x: ', shipStartX);
 
   function render(time) {
     twgl.resizeCanvasToDisplaySize(gl.canvas)
@@ -159,26 +152,22 @@ function main(data) {
     uniforms.u_viewProjection = m4.multiply(projection, view)
 
     m4.translate(uniforms.u_model, ship.velocity, uniforms.u_model)
-
     m4.transformPoint(uniforms.u_model, shipPoint, shipLoc)
     m4.transformPoint(uniforms.u_viewProjection, shipLoc, shipViewLoc)
-    m4.inverse(uniforms.u_viewProjection, viewProjectInverse)
-    var winX = Math.round(((shipViewLoc[0] + 1 ) / 2.0) * gl.canvas.clientWidth)
-  // log('shipLoc: ', shipLoc, ' shipViewLoc: ', shipViewLoc, ' winX: ', winX)
-  if (winX > gl.canvas.clientWidth) {
-    console.log('WENT offscreen');
-    console.log('translation: ', m4.getTranslation(uniforms.u_model));
-    var halfW = (gl.canvas.clientWidth/2) -
-    ((gl.canvas.clientWidth / 2) - shipStartX)
+    if (shipViewLoc[0] < -1) {
+      console.log('ship is off left: ', shipLoc);
+    }
+  if (shipViewLoc[0] > 1) {
+    console.log('ship is off right: ', shipLoc);
 
-    var tr = m4.transformPoint(viewProjectInverse, [halfW, 0, 0])
+    // var halfW = (gl.canvas.clientWidth/2)
+    // m4.inverse(uniforms.u_viewProjection, viewProjectInverse)
+    // var tr = m4.transformPoint(viewProjectInverse, [halfW, 0, 0])
+    var tr = m4.getTranslation(uniforms.u_model)
+
     m4.setTranslation(uniforms.u_model, [-tr[0], 0, 0], uniforms.u_model)
-    console.log('after reset: ',  tr)
-    console.log('thru viewProj matrix: ',   m4.transformPoint(
-      m4.inverse(projection), shipPoint ));
   }
 
-    // log('uniforms: ', uniforms.u_model);
     gl.useProgram(programInfo.program)
     twgl.setBuffersAndAttributes(gl, programInfo, bufferInfo)
     twgl.setUniforms(programInfo, uniforms)
@@ -186,7 +175,6 @@ function main(data) {
     gl.clearColor(0, 0, 0, 1)
     gl.clear(gl.COLOR_BUFFER_BIT)
     gl.drawElements(gl.TRIANGLES, bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
-
     // twgl.drawBufferInfo(gl, bufferInfo, gl.TRIANGLES)
 
     requestAnimationFrame(render)

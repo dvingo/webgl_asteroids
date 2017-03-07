@@ -73,9 +73,9 @@ function parseJson(data) {
         hasFaceVertexNormal = isBitSet( type, 5 );
         hasFaceColor	    = isBitSet( type, 6 );
         hasFaceVertexColor  = isBitSet( type, 7 );
-        console.log("type", type, "bits", isQuad, hasMaterial, hasFaceUv,
-        hasFaceVertexUv, hasFaceNormal, hasFaceVertexNormal, hasFaceColor,
-         hasFaceVertexColor);
+        // console.log("type", type, "bits", isQuad, hasMaterial, hasFaceUv,
+        // hasFaceVertexUv, hasFaceNormal, hasFaceVertexNormal, hasFaceColor,
+        //  hasFaceVertexColor);
         if ( isQuad ) {
             face = new Face();
             face.a = faces[ offset ++ ];
