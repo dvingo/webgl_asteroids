@@ -98,6 +98,7 @@ function main(data) {
   var modelM = m4.identity()
   var ship = {
     velocity: [0, 0, 0],
+    rotation: Math.PI / 6,
     moveM: m4.translation(vec3.create(1, 0, 0))
   }
 
@@ -128,8 +129,10 @@ function main(data) {
   var shipLoc = [], shipViewLoc = []
   var viewProjectInverse = m4.identity()
 
-  m4.rotateX(uniforms.u_model, 90*Math.PI/180, uniforms.u_model)
   m4.scale(uniforms.u_model, [4, 4, 4], uniforms.u_model)
+  m4.translate(uniforms.u_model, [40, 20, 0], uniforms.u_model)
+  m4.rotateX(uniforms.u_model, 90*Math.PI/180, uniforms.u_model)
+  m4.rotateY(uniforms.u_model, Math.PI/10, uniforms.u_model)
 
   /**
    * Camera setup.
