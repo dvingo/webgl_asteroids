@@ -95,9 +95,6 @@ function main(data) {
   var camera = m4.identity();
   var view = m4.identity();
   var viewProjection = m4.identity();
-  var eye = [0, 100, 1]
-  var target = [0, 0, 0]
-  var up = [0, 1, 0]
   var modelM = m4.identity()
   var ship = {
     velocity: [0, 0, 0],
@@ -131,21 +128,42 @@ function main(data) {
   var shipLoc = [], shipViewLoc = []
   var viewProjectInverse = m4.identity()
 
+  m4.rotateX(uniforms.u_model, 90*Math.PI/180, uniforms.u_model)
+  m4.scale(uniforms.u_model, [4, 4, 4], uniforms.u_model)
+
+  /**
+   * Camera setup.
+   */
   gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
   var aspect = gl.canvas.clientWidth / gl.canvas.clientHeight
-  var projection = m4.perspective(30 * Math.PI/180, aspect, .5, 400)
+  var eye = [0, 0, .1], target = [0, 0, 0], up = [0, 1, 0]
+  var left = 0, right = gl.canvas.clientWidth, bottom = gl.canvas.clientHeight,
+      top = 0, near = -40, far = 40
+  var projection = m4.ortho(left, right, top, bottom, near, far)
+  console.log('projection: ', projection);
+  // var fieldOfViewInRadians = 30 * Math.PI/180, zNear = .5, zFar = 400
+  // var persprojection = m4.perspective(fieldOfViewInRadians, aspect, zNear, zFar)
   camera = m4.lookAt(eye, target, up)
   view = m4.inverse(camera)
   uniforms.u_viewProjection = m4.multiply(projection, view)
 
   var clipSpaceCoord = m4.transformPoint(uniforms.u_viewProjection, shipPoint)
+  console.log('ship point: ', shipPoint);
+  console.log('clip space coord: ', clipSpaceCoord);
   var shipStartX = Math.round(((clipSpaceCoord[0] + 1 ) / 2.0) * gl.canvas.clientWidth)
-
+var doLog = 0
+  /**
+   * Draw.
+   */
   function render(time) {
     twgl.resizeCanvasToDisplaySize(gl.canvas)
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
     const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight
-    var projection = m4.perspective(30 * Math.PI/180, aspect, .5, 400)
+    // var projection = m4.perspective(30 * Math.PI/180, aspect, .5, 400)
+
+    var left = 0, right = gl.canvas.clientWidth, bottom = gl.canvas.clientHeight,
+        top = 0, near = -10, far = 10
+    var projection = m4.ortho(left, right, top, bottom, near, far)
 
     camera = m4.lookAt(eye, target, up)
     view = m4.inverse(camera)
@@ -154,13 +172,17 @@ function main(data) {
     m4.translate(uniforms.u_model, ship.velocity, uniforms.u_model)
     m4.transformPoint(uniforms.u_model, shipPoint, shipLoc)
     m4.transformPoint(uniforms.u_viewProjection, shipLoc, shipViewLoc)
+    // if (doLog < 10) {
+      // doLog++
+    log('ship view loc: ', shipViewLoc);
+    // }
     if (shipViewLoc[0] < -1) {
-      console.log('ship is off left: ', shipLoc);
+      // console.log('ship is off left: ', shipLoc);
     }
   if (shipViewLoc[0] > 1) {
-    console.log('ship is off right: ', shipLoc);
+    //console.log('ship is off right: ', shipLoc);
     m4.inverse(uniforms.u_viewProjection, viewProjectInverse)
-    var tr = m4.transformPoint(viewProjectInverse, [-1, eye[1], 1])
+    var tr = m4.transformPoint(viewProjectInverse, [-1, eye[1], eye[2]])
     console.log('tr: ', tr);
     m4.setTranslation(uniforms.u_model, [tr[0], 0, 0], uniforms.u_model)
   }
