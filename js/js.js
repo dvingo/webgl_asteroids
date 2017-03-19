@@ -2,9 +2,6 @@ import twgl from 'twgl.js'
 import chroma from 'chroma-js'
 import parseModel from './parseJson'
 const { m4, v3 } = twgl
-const canvasSize = {
-  w: 600, h: 400
-}
 window.twgl = twgl
 window.m4 = m4, window.v3=v3
 
@@ -23,8 +20,14 @@ const gameState = {
     upPressed: false,
     downPressed: false,
     spacePressed: false
-  }
+  },
+  canvasSize: {w: 600, h: 400},
+  objects: [],
+  getShip: function(){return this.objects[0]},
+  bulletSpeed: 4,
+  bulletSize: 6
 }
+window.gameState = gameState
 
 var gameTypes = objFromStrs('ship')
 /**
@@ -40,23 +43,57 @@ function GObject() {
   this.rotateZ= 0
   this.width = 0
   this.type = ''
+  this.bufferInfo = null
 }
 
-var ship = new GObject()
-ship.position = v3.create(canvasSize.w / 2, canvasSize.h / 2, 0)
-// ship.scale = v3.create(2,2,2)
-ship.scale = v3.create(.2,.2,.2)
-ship.rotateX= Math.PI/2
-ship.rotateY= Math.PI/2
-ship.type = gameTypes.ship
-ship.width = 15
-window.ship = ship
+const getV3Angle = (v) => Math.atan2(v[1], v[0])
+const setV3Length = (v, length) => {
+  var angle = getV3Angle(v)
+  v[0] = Math.cos(angle) * length
+  v[1] = Math.sin(angle) * length
+}
+
+const setV3Angle = (v, a) => {
+  const len = v3.length(v)
+  v[0] = Math.cos(a) * len
+  v[1] = Math.sin(a) * len
+}
+
+function makeBullet(gl, ship) {
+  var bullet = new GObject
+  bullet.velocity = v3.create()
+  setV3Length(bullet.velocity, v3.length(ship.velocity) + gameState.bulletSpeed)
+  setV3Angle(bullet.velocity, ship.rotateZ)
+  bullet.bufferInfo = twgl.primitives.createCubeBufferInfo(gl, gameState.bulletSize)
+  bullet.position = v3.copy(ship.position)
+  return bullet
+}
+
+const keyNames = {
+  left: 37,
+  right: 39,
+  down: 40,
+  up: 38,
+  space: 32,
+  ctrl: 17
+}
+
+const keyToName = {
+  37: 'left',
+  39: 'right',
+  40: 'down',
+  38: 'up',
+  32: 'space',
+  17: 'ctrl'
+}
+
+const validKeys = Object.keys(keyToName).map(Number)
 
 const getJson = (endpoint, cb) => {
   const xhr = new XMLHttpRequest
   xhr.open('GET', endpoint)
   xhr.onreadystatechange = () => {
-    console.log('in on ready change');
+    console.log('in on ready change, ', xhr.readyState, ' ', xhr.status);
     window.xhr = xhr
     if (xhr.readyState === 4 && xhr.status < 400)
       cb(JSON.parse(xhr.responseText))
@@ -64,9 +101,6 @@ const getJson = (endpoint, cb) => {
   xhr.send()
 }
 
-const loadModel = (file, cb) => {
-  getJson(file, data => cb(data))
-}
 function isAccelerating(gameState) {
   return gameState.keys.upPressed ||
          gameState.keys.downPressed
@@ -134,6 +168,17 @@ function objFromStrs() {
   r[arguments[i]] = arguments[i]; return r
 }
 
+function defaultUpdate(gl, gObj, t) {
+  v3.add(gObj.position, gObj.velocity, gObj.position)
+  var xform = m4.identity()
+  m4.translate(xform, gObj.position, xform)
+  m4.rotateX(xform, gObj.rotateX, xform)
+  m4.rotateY(xform, gObj.rotateY, xform)
+  m4.rotateZ(xform, gObj.rotateZ, xform)
+  m4.scale(xform, gObj.scale, xform)
+  return xform
+}
+
 function updateNoop(){return m4.identity()}
 
 var objTypeToUpdateFn = { }
@@ -141,7 +186,7 @@ objTypeToUpdateFn[gameTypes.ship] = updateShip
 window.objTypeToUpdateFn = objTypeToUpdateFn
 
 function update(gl, gObject, t) {
-  return (objTypeToUpdateFn[gObject.type] || updateNoop)(gl, gObject, t)
+  return (objTypeToUpdateFn[gObject.type] || defaultUpdate)(gl, gObject, t)
 }
 
 var createCanvas = (width, height) => {
@@ -171,12 +216,6 @@ var throttle = (fn, timeMs) => {
   }
 }
 
-const setV3Angle = (v, a) => {
-  const len = v3.length(v)
-  v[0] = Math.cos(a) * len
-  v[1] = Math.sin(a) * len
-}
-
 const log = throttle((...args) => console.log.apply(console, args), 1000)
 
 function main(data) {
@@ -186,37 +225,24 @@ function main(data) {
     position: {numComponents: 3, data: data.vertices},
     indices: {numComponents: 3, data: indices}
   }
-  const canvas = createCanvas(canvasSize.w, canvasSize.h)
+  const canvas = createCanvas(gameState.canvasSize.w, gameState.canvasSize.h)
   var gl = canvas.getContext('webgl')
+  gameState.gl = gl
   var programInfo = twgl.createProgramInfo(gl, ['vs', 'fs'])
-  window.bufferInfo = twgl.createBufferInfoFromArrays(gl, arrays)
 
-  const keyNames = {
-    left: 37,
-    right: 39,
-    down: 40,
-    up: 38,
-    space: 32,
-    ctrl: 17
-  }
+  var ship = new GObject()
+  ship.position = v3.create(gameState.canvasSize.w / 2, gameState.canvasSize.h / 2, 0)
+  ship.scale = v3.create(2,2,2)
+  // ship.rotateX= Math.PI/2
+  // ship.rotateY= Math.PI/2
+  ship.type = gameTypes.ship
+  ship.width = 15
+  ship.bufferInfo = twgl.createBufferInfoFromArrays(gl, arrays)
+  window.ship = ship
+  gameState.objects.push(ship)
 
-  const keyToName = {
-    37: 'left',
-    39: 'right',
-    40: 'down',
-    38: 'up',
-    32: 'space',
-    17: 'ctrl'
-  }
-
-  const validKeys = Object.keys(keyToName).map(Number)
-  window.uniforms = uniforms
-  window.m4 = m4
-
-  window.addEventListener('keyup', (e) => {
-    // e.preventDefault()
-    var keyCode = e.keyCode
-    console.log('keuyp', keyCode);
+  window.addEventListener('keyup', ({keyCode}) => {
+    console.log('keyup', keyCode);
     if (keyCode == keyNames.up) gameState.keys.upPressed = false
     if (keyCode == keyNames.down) gameState.keys.downPressed = false
     if (keyCode == keyNames.left) gameState.keys.leftPressed = false
@@ -225,25 +251,19 @@ function main(data) {
     if (keyCode == keyNames.ctrl) gameState.keys.ctrlPressed = false
   })
 
-  window.addEventListener('keydown', (e) => {
-    // e.preventDefault()
-    var keyCode = e.keyCode
-    console.log('got keydown: ', keyCode)
+  const throttledMakeBullet = throttle(function() {
+    gameState.objects.push(makeBullet(gameState.gl, gameState.getShip()))
+  }, 100)
+
+  window.addEventListener('keydown', ({keyCode}) => {
+    console.log('keydown: ', keyCode)
     if (validKeys.indexOf(keyCode) < 0) { return }
     if (keyCode == keyNames.up) gameState.keys.upPressed = true
     if (keyCode == keyNames.down) gameState.keys.downPressed = true
     if (keyCode == keyNames.left) gameState.keys.leftPressed = true
-    if (keyCode === keyNames.right) gameState.keys.rightPressed = true
+    if (keyCode == keyNames.right) gameState.keys.rightPressed = true
+    if (keyCode == keyNames.space) throttledMakeBullet()
   })
-
-  /**
-   * Camera setup.
-   */
-  gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
-  var aspect = gl.canvas.clientWidth / gl.canvas.clientHeight
-  var eye = [0, 0, .1], target = [0, 0, 0], up = [0, 1, 0]
-  var left = 0, right = gl.canvas.clientWidth, bottom = gl.canvas.clientHeight,
-      top = 0, near = -40, far = 40
 
   /**
    * Draw.
@@ -257,21 +277,21 @@ function main(data) {
     var projection = m4.ortho(left, right, top, bottom, near, far)
     var view = m4.identity()
     uniforms.u_viewProjection = m4.multiply(projection, view)
-    uniforms.u_model = update(gl, ship)
-
-    gl.useProgram(programInfo.program)
-    twgl.setBuffersAndAttributes(gl, programInfo, bufferInfo)
-    twgl.setUniforms(programInfo, uniforms)
-
     gl.clearColor(0, 0, 0, 1)
     gl.clear(gl.COLOR_BUFFER_BIT)
-    gl.drawElements(gl.TRIANGLES, bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
+    var gameObject
+    for (var i = 0, len = gameState.objects.length; i < len; i++) {
+      gameObject = gameState.objects[i]
+      uniforms.u_model = update(gl, gameObject)
+      gl.useProgram(programInfo.program)
+      twgl.setBuffersAndAttributes(gl, programInfo, gameObject.bufferInfo)
+      twgl.setUniforms(programInfo, uniforms)
+      gl.drawElements(gl.TRIANGLES, gameObject.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
+    }
     requestAnimationFrame(render)
   }
   requestAnimationFrame(render)
 }
 
-loadModel('models/plane.json', (data) => {
-// loadModel('models/shipRotatedYUp.json', (data) => {
-  main(data)
-})
+// getJson('models/plane.json', main)
+getJson('models/shipRotatedYUp.json', main)
