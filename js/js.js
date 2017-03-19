@@ -6,7 +6,7 @@ window.twgl = twgl
 window.m4 = m4, window.v3=v3
 
 const createEl = document.createElement.bind(document)
-Node.prototype.on = function(){this.addEventListener.apply(this,arguments)}
+EventTarget.prototype.on = function(){this.addEventListener.apply(this,arguments)}
 
 const gameState = {
   thrust: .01,
@@ -241,7 +241,7 @@ function main(data) {
   window.ship = ship
   gameState.objects.push(ship)
 
-  window.addEventListener('keyup', ({keyCode}) => {
+  window.on('keyup', ({keyCode}) => {
     console.log('keyup', keyCode);
     if (keyCode == keyNames.up) gameState.keys.upPressed = false
     if (keyCode == keyNames.down) gameState.keys.downPressed = false
@@ -255,7 +255,7 @@ function main(data) {
     gameState.objects.push(makeBullet(gameState.gl, gameState.getShip()))
   }, 100)
 
-  window.addEventListener('keydown', ({keyCode}) => {
+  window.on('keydown', ({keyCode}) => {
     console.log('keydown: ', keyCode)
     if (validKeys.indexOf(keyCode) < 0) { return }
     if (keyCode == keyNames.up) gameState.keys.upPressed = true
