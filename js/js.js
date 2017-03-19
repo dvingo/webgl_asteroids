@@ -8,11 +8,55 @@ window.m4 = m4, window.v3=v3
 const createEl = document.createElement.bind(document)
 EventTarget.prototype.on = function(){this.addEventListener.apply(this,arguments)}
 
+function awaitAll() {
+  var cbs = arguments
+  var r = [], count = cbs.length-1
+  function cb(d) {
+    r.push(d)
+    count--
+    if(!count) cbs[cbs.length-1](r)
+  }
+  for (var i =0,len=cbs.length-1;i<len;i++) cbs[i](cb)
+}
+
+function partial(fn) {
+  return fn.bind.apply(fn, [null].concat(Array.prototype.slice.call(arguments, 1)))
+}
+
+var throttle = (fn, timeMs) => {
+  let wasCalled = false
+  return function() {
+    let args = arguments
+    if (!wasCalled) {
+      wasCalled = true
+      setTimeout(function() {
+        wasCalled = false
+        fn.apply(null, args)
+      }, timeMs)
+    }
+  }
+}
+
+function rand(n, m) {
+  n = n || 1
+  m = m || 0
+  var x1 = Math.min(n,m)
+  var x2 = Math.max(n,m)
+  return x1 + Math.random() * (x2-x1)
+}
+
+function randI(n, m) {
+  return Math.floor(rand(n, m))
+}
+
+window.rand= rand
+window.randI= randI
+
 const gameState = {
   thrust: .01,
   maxAcc: .03,
   maxVelocity: 10,
-  rotateBy: Math.PI/40,
+  rotateBy: Math.PI/80,
   keys: {
     ctrlPressed: false,
     leftPressed: false,
@@ -47,6 +91,7 @@ function GObject() {
 }
 
 const getV3Angle = (v) => Math.atan2(v[1], v[0])
+
 const setV3Length = (v, length) => {
   var angle = getV3Angle(v)
   v[0] = Math.cos(angle) * length
@@ -69,6 +114,10 @@ function makeBullet(gl, ship) {
   return bullet
 }
 
+const throttledMakeBullet = throttle(function() {
+  gameState.objects.push(makeBullet(gameState.gl, gameState.getShip()))
+}, 100)
+
 const keyNames = {
   left: 37,
   right: 39,
@@ -78,23 +127,13 @@ const keyNames = {
   ctrl: 17
 }
 
-const keyToName = {
-  37: 'left',
-  39: 'right',
-  40: 'down',
-  38: 'up',
-  32: 'space',
-  17: 'ctrl'
-}
-
-const validKeys = Object.keys(keyToName).map(Number)
+const validKeys = Object.keys(keyNames).map(i => keyNames[i])
 
 const getJson = (endpoint, cb) => {
   const xhr = new XMLHttpRequest
   xhr.open('GET', endpoint)
   xhr.onreadystatechange = () => {
     console.log('in on ready change, ', xhr.readyState, ' ', xhr.status);
-    window.xhr = xhr
     if (xhr.readyState === 4 && xhr.status < 400)
       cb(JSON.parse(xhr.responseText))
   }
@@ -107,8 +146,8 @@ function isAccelerating(gameState) {
 }
 
 function updateShip(gl, ship) {
+  // TODO use setlength instead of this
   if (gameState.keys.upPressed) {
-    console.log('UP pressed');
     ship.acceleration[0] += Math.cos(ship.rotateZ) * gameState.thrust
     ship.acceleration[1] += Math.sin(ship.rotateZ) * gameState.thrust
     if (ship.acceleration[0] > gameState.maxAcc) ship.acceleration[0] = gameState.maxAcc
@@ -116,7 +155,6 @@ function updateShip(gl, ship) {
   }
 
   if (gameState.keys.downPressed) {
-    console.log('DOWN pressed');
     ship.acceleration[0] -= Math.cos(ship.rotateZ) * gameState.thrust
     ship.acceleration[1] -= Math.sin(ship.rotateZ) * gameState.thrust
     if (ship.acceleration[0] < -gameState.maxAcc) ship.acceleration[0] = -gameState.maxAcc
@@ -141,18 +179,19 @@ function updateShip(gl, ship) {
   if (ship.velocity[1] < -gameState.maxVelocity) ship.velocity[1] = -gameState.maxVelocity
   v3.add(ship.position, ship.velocity, ship.position)
   // Wrap the ship around the screen.
-  if (ship.position[0] + ship.width < 0) {
+  if (ship.position[0] + ship.width < 0)
     ship.position[0] = gl.canvas.clientWidth + ship.width
-  }
-  if (ship.position[0] > gl.canvas.clientWidth + ship.width) {
+
+  if (ship.position[0] > gl.canvas.clientWidth + ship.width)
     ship.position[0] = 0
-  }
-  if (ship.position[1] + ship.width < 0) {
+
+  if (ship.position[1] + ship.width < 0)
     ship.position[1] = gl.canvas.clientHeight + ship.width
-  }
-  if (ship.position[1] > gl.canvas.clientHeight + ship.width) {
+
+  if (ship.position[1] > gl.canvas.clientHeight + ship.width)
     ship.position[1] = 0
-  }
+
+  if (gameState.keys.spacePressed) throttledMakeBullet()
 
   var xform = m4.identity()
   m4.translate(xform, ship.position, xform)
@@ -202,34 +241,43 @@ const uniforms = {
   u_model: m4.identity()
 }
 
-var throttle = (fn, timeMs) => {
-  let wasCalled = false
-  return function() {
-    let args = arguments
-    if (!wasCalled) {
-      wasCalled = true
-      setTimeout(function() {
-        wasCalled = false
-        fn.apply(null, args)
-      }, timeMs)
-    }
-  }
-}
-
 const log = throttle((...args) => console.log.apply(console, args), 1000)
 
-function main(data) {
+function setupModelBuffer(gl, data) {
   var faceData = parseModel.parseJson(data)
   var indices = parseModel.getIndicesFromFaces(faceData)
-  const arrays = {
+  var arrays = {
     position: {numComponents: 3, data: data.vertices},
     indices: {numComponents: 3, data: indices}
   }
+  return twgl.createBufferInfoFromArrays(gl, arrays)
+}
+
+window.on('keyup', ({keyCode}) => {
+  console.log('keyup', keyCode);
+  if (keyCode == keyNames.up) gameState.keys.upPressed = false
+  if (keyCode == keyNames.down) gameState.keys.downPressed = false
+  if (keyCode == keyNames.left) gameState.keys.leftPressed = false
+  if (keyCode == keyNames.right) gameState.keys.rightPressed = false
+  if (keyCode == keyNames.space) gameState.keys.spacePressed = false
+  if (keyCode == keyNames.ctrl) gameState.keys.ctrlPressed = false
+})
+
+window.on('keydown', ({keyCode}) => {
+  console.log('keydown: ', keyCode)
+  if (validKeys.indexOf(keyCode) < 0) { return }
+  if (keyCode == keyNames.up) gameState.keys.upPressed = true
+  if (keyCode == keyNames.down) gameState.keys.downPressed = true
+  if (keyCode == keyNames.left) gameState.keys.leftPressed = true
+  if (keyCode == keyNames.right) gameState.keys.rightPressed = true
+  if (keyCode == keyNames.space) gameState.keys.spacePressed = true
+})
+
+function main(modelsData) {
   const canvas = createCanvas(gameState.canvasSize.w, gameState.canvasSize.h)
   var gl = canvas.getContext('webgl')
   gameState.gl = gl
   var programInfo = twgl.createProgramInfo(gl, ['vs', 'fs'])
-
   var ship = new GObject()
   ship.position = v3.create(gameState.canvasSize.w / 2, gameState.canvasSize.h / 2, 0)
   ship.scale = v3.create(2,2,2)
@@ -237,33 +285,22 @@ function main(data) {
   // ship.rotateY= Math.PI/2
   ship.type = gameTypes.ship
   ship.width = 15
-  ship.bufferInfo = twgl.createBufferInfoFromArrays(gl, arrays)
+  ship.bufferInfo = setupModelBuffer(gl, modelsData[0])
   window.ship = ship
   gameState.objects.push(ship)
 
-  window.on('keyup', ({keyCode}) => {
-    console.log('keyup', keyCode);
-    if (keyCode == keyNames.up) gameState.keys.upPressed = false
-    if (keyCode == keyNames.down) gameState.keys.downPressed = false
-    if (keyCode == keyNames.left) gameState.keys.leftPressed = false
-    if (keyCode == keyNames.right) gameState.keys.rightPressed = false
-    if (keyCode == keyNames.space) gameState.keys.spacePressed = false
-    if (keyCode == keyNames.ctrl) gameState.keys.ctrlPressed = false
-  })
-
-  const throttledMakeBullet = throttle(function() {
-    gameState.objects.push(makeBullet(gameState.gl, gameState.getShip()))
-  }, 100)
-
-  window.on('keydown', ({keyCode}) => {
-    console.log('keydown: ', keyCode)
-    if (validKeys.indexOf(keyCode) < 0) { return }
-    if (keyCode == keyNames.up) gameState.keys.upPressed = true
-    if (keyCode == keyNames.down) gameState.keys.downPressed = true
-    if (keyCode == keyNames.left) gameState.keys.leftPressed = true
-    if (keyCode == keyNames.right) gameState.keys.rightPressed = true
-    if (keyCode == keyNames.space) throttledMakeBullet()
-  })
+  var asteroid = new GObject()
+  asteroid.type = gameTypes.asteroid
+  asteroid.velocity[0] = rand() * .5 * (rand() > .5 ? -1 : 1)
+  asteroid.velocity[1] = rand() * .5 * (rand() > .5 ? -1 : 1)
+  asteroid.width = 15
+  asteroid.position = v3.create(
+    gameState.canvasSize.w / 2 + asteroid.width*2,
+    gameState.canvasSize.h / 2 + asteroid.width*2, 0
+  )
+  asteroid.scale = v3.create(2,2,2)
+  asteroid.bufferInfo = setupModelBuffer(gl, modelsData[1])
+  gameState.objects.push(asteroid)
 
   /**
    * Draw.
@@ -279,8 +316,10 @@ function main(data) {
     uniforms.u_viewProjection = m4.multiply(projection, view)
     gl.clearColor(0, 0, 0, 1)
     gl.clear(gl.COLOR_BUFFER_BIT)
-    var gameObject
-    for (var i = 0, len = gameState.objects.length; i < len; i++) {
+    for (
+      var i = 0, len = gameState.objects.length, gameObject;
+       i < len;
+       i++) {
       gameObject = gameState.objects[i]
       uniforms.u_model = update(gl, gameObject)
       gl.useProgram(programInfo.program)
@@ -293,5 +332,10 @@ function main(data) {
   requestAnimationFrame(render)
 }
 
-// getJson('models/plane.json', main)
-getJson('models/shipRotatedYUp.json', main)
+
+awaitAll(
+  // parial(getJson, 'models/plane.json'),
+  partial(getJson, 'models/shipRotatedYUp.json'),
+  partial(getJson, 'models/asteroid.json'),
+  main
+)
