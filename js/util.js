@@ -3,12 +3,12 @@ const createEl = document.createElement.bind(document)
 export function awaitAll() {
   var cbs = arguments
   var r = [], count = cbs.length-1
-  function cb(d) {
-    r.push(d)
+  function cb(i, d) {
+    r.splice(i, 0, d)
     count--
     if(!count) cbs[cbs.length-1](r)
   }
-  for (var i =0,len=cbs.length-1;i<len;i++) cbs[i](cb)
+  for (var i =0,len=cbs.length-1;i<len;i++) cbs[i](partial(cb, i))
 }
 
 export function partial(fn) {
@@ -102,3 +102,4 @@ export const getJson = (endpoint, cb) => {
   }
   xhr.send()
 }
+export function lerp(t, n, m) { return n + t*(m-n) }

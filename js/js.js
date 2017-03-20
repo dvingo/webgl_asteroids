@@ -3,7 +3,7 @@ import chroma from 'chroma-js'
 import parseModel from './parseJson'
 import {
   awaitAll, bbox, partial, throttle, rand, randInt, objFromStrs,
-  createCanvas, validKeys, keyNames, getJson
+  createCanvas, validKeys, keyNames, getJson, lerp
 } from './util'
 const { m4, v3 } = twgl
 window.twgl = twgl
@@ -12,7 +12,7 @@ window.m4 = m4, window.v3=v3
 EventTarget.prototype.on = function(){this.addEventListener.apply(this,arguments)}
 
 const gameState = {
-  thrust: .01,
+  thrust: .03,
   maxAcc: .03,
   maxVelocity: 10,
   rotateBy: Math.PI/80,
@@ -28,7 +28,8 @@ const gameState = {
   canvasSize: {w: 600, h: 400},
   objects: [],
   getShip: function(){return this.objects[0]},
-  bulletSpeed: 4,
+  bulletLifetimeMs: 4000,
+  bulletSpeed: 2,
   bulletSize: 2,
   projection: m4.identity(),
   view: m4.identity(),
@@ -39,13 +40,14 @@ const gameState = {
 }
 window.gameState = gameState
 
-var gameTypes = objFromStrs('ship', 'asteroid')
+var gameTypes = objFromStrs('ship', 'asteroid', 'bullet')
 /**
  * Game object.
  */
 function GObject() {
   this.position = v3.create(0,0,0)
-  this.scale = v3.create(1, 1, 1)
+  this.scale = 1
+  this.scaleV3 = v3.create(1, 1, 1)
   this.velocity = v3.create(0, 0, 0)
   this.acceleration = v3.create(0, 0, 0)
   this.rotateY = 0
@@ -53,8 +55,11 @@ function GObject() {
   this.rotateZ= 0
   this.matrix = m4.identity()
   this.width = 0
+  this.height = 0
   this.type = ''
   this.bufferInfo = null
+  this.createdTime = new Date().getTime()
+  this.shouldRemove = false
 }
 
 const getV3Angle = (v) => Math.atan2(v[1], v[0])
@@ -73,6 +78,7 @@ const setV3Angle = (v, a) => {
 
 function makeBullet(gl, ship, bulletData) {
   var bullet = new GObject
+  bullet.type = gameTypes.bullet
   setV3Length(bullet.velocity, v3.length(ship.velocity) + gameState.bulletSpeed)
   setV3Angle(bullet.velocity, ship.rotateZ)
   bullet.bufferInfo = bulletData.bufferInfo
@@ -90,21 +96,14 @@ function isAccelerating(gameState) {
          gameState.keys.downPressed
 }
 
-function updateShip(gl, ship) {
-  // TODO use setlength instead of this
-  if (gameState.keys.upPressed) {
-    ship.acceleration[0] += Math.cos(ship.rotateZ) * gameState.thrust
-    ship.acceleration[1] += Math.sin(ship.rotateZ) * gameState.thrust
-    if (ship.acceleration[0] > gameState.maxAcc) ship.acceleration[0] = gameState.maxAcc
-    if (ship.acceleration[1] > gameState.maxAcc) ship.acceleration[1] = gameState.maxAcc
-  }
+function updateShip(ship, gameState, t) {
+  var gl = gameState.gl
+  if (gameState.keys.upPressed)
+    v3.add(ship.velocity, ship.acceleration, ship.velocity)
 
-  if (gameState.keys.downPressed) {
-    ship.acceleration[0] -= Math.cos(ship.rotateZ) * gameState.thrust
-    ship.acceleration[1] -= Math.sin(ship.rotateZ) * gameState.thrust
-    if (ship.acceleration[0] < -gameState.maxAcc) ship.acceleration[0] = -gameState.maxAcc
-    if (ship.acceleration[1] < -gameState.maxAcc) ship.acceleration[1] = -gameState.maxAcc
-  }
+  if (gameState.keys.downPressed)
+    v3.subtract(ship.velocity, ship.acceleration, ship.velocity)
+
   if (gameState.keys.leftPressed) {
     ship.rotateZ += gameState.rotateBy
     setV3Angle(ship.acceleration, ship.rotateZ)
@@ -113,15 +112,9 @@ function updateShip(gl, ship) {
     ship.rotateZ -= gameState.rotateBy
     setV3Angle(ship.acceleration, ship.rotateZ)
   }
-  if (isAccelerating(gameState)) {
-    v3.add(ship.velocity, ship.acceleration, ship.velocity)
-  } else {
-    setV3Angle(ship.acceleration, ship.rotateZ)
-  }
-  if (ship.velocity[0] > gameState.maxVelocity) ship.velocity[0] = gameState.maxVelocity
-  if (ship.velocity[1] > gameState.maxVelocity) ship.velocity[1] = gameState.maxVelocity
-  if (ship.velocity[0] < -gameState.maxVelocity) ship.velocity[0] = -gameState.maxVelocity
-  if (ship.velocity[1] < -gameState.maxVelocity) ship.velocity[1] = -gameState.maxVelocity
+  if (v3.length(ship.velocity) > gameState.maxVelocity)
+    setV3Length(ship.velocity, gameState.maxVelocity)
+
   v3.add(ship.position, ship.velocity, ship.position)
   // Wrap the ship around the screen.
   if (ship.position[0] + ship.width < 0)
@@ -144,34 +137,60 @@ function updateShip(gl, ship) {
   m4.rotateX(m, ship.rotateX, m)
   m4.rotateY(m, ship.rotateY, m)
   m4.rotateZ(m, ship.rotateZ, m)
-  m4.scale(m, ship.scale, m)
+  m4.scale(m, ship.scaleV3, m)
 }
 
-function defaultUpdate(gl, gObj, t) {
+function defaultUpdate(gObj, gameState, t) {
+  var gl = gameState.gl
   v3.add(gObj.position, gObj.velocity, gObj.position)
+
+  if (gObj.position[0] + gObj.width < 0)
+    gObj.position[0] = gl.canvas.clientWidth + gObj.width
+
+  if (gObj.position[0] > gl.canvas.clientWidth + gObj.width)
+    gObj.position[0] = -gObj.width
+
+  if (gObj.position[1] + gObj.height< 0)
+    gObj.position[1] = gl.canvas.clientHeight + gObj.height
+
+  if (gObj.position[1] > gl.canvas.clientHeight + gObj.height)
+    gObj.position[1] = -gObj.height
   m4.identity(gObj.matrix)
   m4.translate(gObj.matrix, gObj.position, gObj.matrix)
   m4.rotateX(gObj.matrix, gObj.rotateX, gObj.matrix)
   m4.rotateY(gObj.matrix, gObj.rotateY, gObj.matrix)
   m4.rotateZ(gObj.matrix, gObj.rotateZ, gObj.matrix)
-  m4.scale(gObj.matrix, gObj.scale, gObj.matrix)
+  m4.scale(gObj.matrix, gObj.scaleV3, gObj.matrix)
+}
+
+function findIndex(item, list) {
+  for (var i = 0, len = list.length;i < len;i++)
+    if (item === list[i]) return i
+  return -1
+}
+
+var getTime = () => new Date().getTime(0)
+
+function updateBullet(bullet, gameState, t) {
+  if (getTime() - bullet.createdTime > gameState.bulletLifetimeMs)
+    bullet.shouldRemove = true
+  defaultUpdate(bullet, gameState, t)
 }
 
 function updateNoop(){return m4.identity()}
 
 var objTypeToUpdateFn = { }
 objTypeToUpdateFn[gameTypes.ship] = updateShip
+objTypeToUpdateFn[gameTypes.bullet] = updateBullet
 window.objTypeToUpdateFn = objTypeToUpdateFn
 
-function update(gl, gObject, t) {
-  return (objTypeToUpdateFn[gObject.type] || defaultUpdate)(gl, gObject, t)
+function update(gObject, t) {
+  return (objTypeToUpdateFn[gObject.type] || defaultUpdate)(gObject, gameState, t)
 }
-
 
 const log = throttle((...args) => console.log.apply(console, args), 1000)
 
 function setupModelBuffer(gl, data) {
-  console.log('data: ', data);
   window.data=data
   var faceData = parseModel.parseJson(data)
   var indices = parseModel.getIndicesFromFaces(faceData)
@@ -184,29 +203,43 @@ function setupModelBuffer(gl, data) {
 
 function initShip(position, shipData) {
   var ship = new GObject
+  setV3Length(ship.acceleration, gameState.thrust)
   ship.position = position
-  ship.scale = v3.create(2,2,2)
+  ship.scale = 2
+  ship.scaleV3 = v3.create(ship.scale, ship.scale, ship.scale)
   // ship.rotateX= Math.PI/2
   // ship.rotateY= Math.PI/2
   ship.type = gameTypes.ship
-  ship.width = 15
   ship.bufferInfo = shipData.bufferInfo
-  ship.bbox = bbox(shipData.modelData.vertices)
+
+  var box = bbox(shipData.modelData.vertices)
+  ship.bbox = box
+  ship.width = (box.x.max - box.x.min) * ship.scale
+  ship.height = (box.y.max - box.y.min) * ship.scale
+
   window.ship = ship
   return ship
 }
 
-function initAsteroid(position, asteroidData) {
+function initAsteroid(screenSize, asteroidData) {
   var asteroid = new GObject()
   asteroid.type = gameTypes.asteroid
   asteroid.velocity[0] = rand() * .5 * (rand() > .5 ? -1 : 1)
   asteroid.velocity[1] = rand() * .5 * (rand() > .5 ? -1 : 1)
-  asteroid.width = 15
-  asteroid.position = position
-  asteroid.scale = v3.create(4,4,4)
+  asteroid.scale = 4
+  asteroid.scaleV3 = v3.create(asteroid.scale, asteroid.scale, asteroid.scale)
+  var box = bbox(asteroidData.modelData.vertices)
+  asteroid.bbox = box
+  asteroid.width = (box.x.max - box.x.min) * asteroid.scale
+  asteroid.height = (box.y.max - box.y.min) * asteroid.scale
+  asteroid.position = v3.create(
+    lerp(rand(), 0, screenSize.w),
+    lerp(rand(), 0, screenSize.h),
+    0
+  )
+  // TODO padding around ship in center
   asteroid.rotateZ = rand(Math.PI*2)
   asteroid.bufferInfo = asteroidData.bufferInfo
-  asteroid.bbox = bbox(asteroidData.modelData.vertices)
   return asteroid
 }
 
@@ -249,13 +282,11 @@ function setupGameObjects(gameState, modelsData) {
   gameState.objects.push(initShip(center, gameState.shipData))
 
   var asteroidWidth = 15
+  var screenSize = {
+    w:gl.canvas.clientWidth, h: gl.canvas.clientHeight
+  }
   for (var i = 0; i < gameState.numAsteroids; i++) {
-    var position = v3.create(
-      gl.canvas.clientWidth / 2 + asteroidWidth * 4,
-      gl.canvas.clientHeight / 2 + asteroidWidth * 2,
-      0
-    )
-    gameState.objects.push(initAsteroid(position, gameState.asteroidData))
+    gameState.objects.push(initAsteroid(screenSize, gameState.asteroidData))
   }
 }
 
@@ -266,7 +297,7 @@ function main(modelsData) {
   gameState.gl = gl
   setupGameObjects(gameState, modelsData)
 
-  function render(time) {
+  function loop(time) {
     twgl.resizeCanvasToDisplaySize(gl.canvas)
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
     const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight
@@ -279,20 +310,30 @@ function main(modelsData) {
     gl.clearColor(0, 0, 0, 1)
     gl.clear(gl.COLOR_BUFFER_BIT)
     for (
+      var i = 0, len = gameState.objects.length;
+       i < len;
+       i++) {
+      update(gameState.objects[i], time)
+    }
+
+    for (
       var i = 0, len = gameState.objects.length, gameObject;
        i < len;
        i++) {
       gameObject = gameState.objects[i]
-      update(gl, gameObject)
       gameState.uniforms.u_model = gameObject.matrix
       gl.useProgram(programInfo.program)
       twgl.setBuffersAndAttributes(gl, programInfo, gameObject.bufferInfo)
       twgl.setUniforms(programInfo, gameState.uniforms)
       gl.drawElements(gl.TRIANGLES, gameObject.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
     }
-    requestAnimationFrame(render)
+
+    // This is only for bullets (particles), should use object pool for memory
+    gameState.objects = gameState.objects.filter(i => !i.shouldRemove)
+
+    requestAnimationFrame(loop)
   }
-  requestAnimationFrame(render)
+  requestAnimationFrame(loop)
 }
 
 awaitAll(
