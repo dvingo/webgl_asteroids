@@ -31,7 +31,11 @@ const gameState = {
   bulletSpeed: 4,
   bulletSize: 2,
   projection: m4.identity(),
-  view: m4.identity()
+  view: m4.identity(),
+  uniforms: {
+    u_viewProjection: m4.identity(),
+    u_model: m4.identity()
+  }
 }
 window.gameState = gameState
 
@@ -163,10 +167,6 @@ function update(gl, gObject, t) {
   return (objTypeToUpdateFn[gObject.type] || defaultUpdate)(gl, gObject, t)
 }
 
-const uniforms = {
-  u_viewProjection: m4.identity(),
-  u_model: m4.identity()
-}
 
 const log = throttle((...args) => console.log.apply(console, args), 1000)
 
@@ -275,7 +275,7 @@ function main(modelsData) {
         bottom = gl.canvas.clientHeight,
         left = 0, near = -10, far = 10
     m4.ortho(left, right, top, bottom, near, far, gameState.projection)
-    m4.multiply(gameState.projection, gameState.view, uniforms.u_viewProjection)
+    m4.multiply(gameState.projection, gameState.view, gameState.uniforms.u_viewProjection)
     gl.clearColor(0, 0, 0, 1)
     gl.clear(gl.COLOR_BUFFER_BIT)
     for (
@@ -284,10 +284,10 @@ function main(modelsData) {
        i++) {
       gameObject = gameState.objects[i]
       update(gl, gameObject)
-      uniforms.u_model = gameObject.matrix
+      gameState.uniforms.u_model = gameObject.matrix
       gl.useProgram(programInfo.program)
       twgl.setBuffersAndAttributes(gl, programInfo, gameObject.bufferInfo)
-      twgl.setUniforms(programInfo, uniforms)
+      twgl.setUniforms(programInfo, gameState.uniforms)
       gl.drawElements(gl.TRIANGLES, gameObject.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
     }
     requestAnimationFrame(render)
