@@ -1,62 +1,22 @@
 import twgl from 'twgl.js'
 import chroma from 'chroma-js'
 import parseModel from './parseJson'
+import {
+  awaitAll, bbox, partial, throttle, rand, randInt, objFromStrs,
+  createCanvas, validKeys, keyNames, getJson
+} from './util'
 const { m4, v3 } = twgl
 window.twgl = twgl
 window.m4 = m4, window.v3=v3
 
-const createEl = document.createElement.bind(document)
 EventTarget.prototype.on = function(){this.addEventListener.apply(this,arguments)}
-
-function awaitAll() {
-  var cbs = arguments
-  var r = [], count = cbs.length-1
-  function cb(d) {
-    r.push(d)
-    count--
-    if(!count) cbs[cbs.length-1](r)
-  }
-  for (var i =0,len=cbs.length-1;i<len;i++) cbs[i](cb)
-}
-
-function partial(fn) {
-  return fn.bind.apply(fn, [null].concat(Array.prototype.slice.call(arguments, 1)))
-}
-
-var throttle = (fn, timeMs) => {
-  let wasCalled = false
-  return function() {
-    let args = arguments
-    if (!wasCalled) {
-      wasCalled = true
-      setTimeout(function() {
-        wasCalled = false
-        fn.apply(null, args)
-      }, timeMs)
-    }
-  }
-}
-
-function rand(n, m) {
-  n = n || 1
-  m = m || 0
-  var x1 = Math.min(n,m)
-  var x2 = Math.max(n,m)
-  return x1 + Math.random() * (x2-x1)
-}
-
-function randI(n, m) {
-  return Math.floor(rand(n, m))
-}
-
-window.rand= rand
-window.randI= randI
 
 const gameState = {
   thrust: .01,
   maxAcc: .03,
   maxVelocity: 10,
   rotateBy: Math.PI/80,
+  numAsteroids: 10,
   keys: {
     ctrlPressed: false,
     leftPressed: false,
@@ -69,11 +29,13 @@ const gameState = {
   objects: [],
   getShip: function(){return this.objects[0]},
   bulletSpeed: 4,
-  bulletSize: 6
+  bulletSize: 2,
+  projection: m4.identity(),
+  view: m4.identity()
 }
 window.gameState = gameState
 
-var gameTypes = objFromStrs('ship')
+var gameTypes = objFromStrs('ship', 'asteroid')
 /**
  * Game object.
  */
@@ -85,6 +47,7 @@ function GObject() {
   this.rotateY = 0
   this.rotateX= 0
   this.rotateZ= 0
+  this.matrix = m4.identity()
   this.width = 0
   this.type = ''
   this.bufferInfo = null
@@ -104,41 +67,19 @@ const setV3Angle = (v, a) => {
   v[1] = Math.sin(a) * len
 }
 
-function makeBullet(gl, ship) {
+function makeBullet(gl, ship, bulletData) {
   var bullet = new GObject
-  bullet.velocity = v3.create()
   setV3Length(bullet.velocity, v3.length(ship.velocity) + gameState.bulletSpeed)
   setV3Angle(bullet.velocity, ship.rotateZ)
-  bullet.bufferInfo = twgl.primitives.createCubeBufferInfo(gl, gameState.bulletSize)
+  bullet.bufferInfo = bulletData.bufferInfo
+  bullet.bbox = bulletData.bbox
   bullet.position = v3.copy(ship.position)
   return bullet
 }
 
 const throttledMakeBullet = throttle(function() {
-  gameState.objects.push(makeBullet(gameState.gl, gameState.getShip()))
+  gameState.objects.push(makeBullet(gameState.gl, gameState.getShip(), gameState.bulletData))
 }, 100)
-
-const keyNames = {
-  left: 37,
-  right: 39,
-  down: 40,
-  up: 38,
-  space: 32,
-  ctrl: 17
-}
-
-const validKeys = Object.keys(keyNames).map(i => keyNames[i])
-
-const getJson = (endpoint, cb) => {
-  const xhr = new XMLHttpRequest
-  xhr.open('GET', endpoint)
-  xhr.onreadystatechange = () => {
-    console.log('in on ready change, ', xhr.readyState, ' ', xhr.status);
-    if (xhr.readyState === 4 && xhr.status < 400)
-      cb(JSON.parse(xhr.responseText))
-  }
-  xhr.send()
-}
 
 function isAccelerating(gameState) {
   return gameState.keys.upPressed ||
@@ -193,29 +134,23 @@ function updateShip(gl, ship) {
 
   if (gameState.keys.spacePressed) throttledMakeBullet()
 
-  var xform = m4.identity()
-  m4.translate(xform, ship.position, xform)
-  m4.rotateX(xform, ship.rotateX, xform)
-  m4.rotateY(xform, ship.rotateY, xform)
-  m4.rotateZ(xform, ship.rotateZ, xform)
-  m4.scale(xform, ship.scale, xform)
-  return xform
-}
-
-function objFromStrs() {
-  for (var i=0,r={},len=arguments.length;i<len;i++)
-  r[arguments[i]] = arguments[i]; return r
+  var m = ship.matrix
+  m4.identity(m)
+  m4.translate(m, ship.position, m)
+  m4.rotateX(m, ship.rotateX, m)
+  m4.rotateY(m, ship.rotateY, m)
+  m4.rotateZ(m, ship.rotateZ, m)
+  m4.scale(m, ship.scale, m)
 }
 
 function defaultUpdate(gl, gObj, t) {
   v3.add(gObj.position, gObj.velocity, gObj.position)
-  var xform = m4.identity()
-  m4.translate(xform, gObj.position, xform)
-  m4.rotateX(xform, gObj.rotateX, xform)
-  m4.rotateY(xform, gObj.rotateY, xform)
-  m4.rotateZ(xform, gObj.rotateZ, xform)
-  m4.scale(xform, gObj.scale, xform)
-  return xform
+  m4.identity(gObj.matrix)
+  m4.translate(gObj.matrix, gObj.position, gObj.matrix)
+  m4.rotateX(gObj.matrix, gObj.rotateX, gObj.matrix)
+  m4.rotateY(gObj.matrix, gObj.rotateY, gObj.matrix)
+  m4.rotateZ(gObj.matrix, gObj.rotateZ, gObj.matrix)
+  m4.scale(gObj.matrix, gObj.scale, gObj.matrix)
 }
 
 function updateNoop(){return m4.identity()}
@@ -228,14 +163,6 @@ function update(gl, gObject, t) {
   return (objTypeToUpdateFn[gObject.type] || defaultUpdate)(gl, gObject, t)
 }
 
-var createCanvas = (width, height) => {
-  const canvas = createEl('canvas')
-  canvas.style.width = width + 'px'
-  canvas.style.height = height + 'px'
-  canvas.style.boxShadow = '1px 1px 4px hsla(0, 0%, 0%, 0.8)'
-  return document.body.appendChild(canvas)
-}
-
 const uniforms = {
   u_viewProjection: m4.identity(),
   u_model: m4.identity()
@@ -244,6 +171,8 @@ const uniforms = {
 const log = throttle((...args) => console.log.apply(console, args), 1000)
 
 function setupModelBuffer(gl, data) {
+  console.log('data: ', data);
+  window.data=data
   var faceData = parseModel.parseJson(data)
   var indices = parseModel.getIndicesFromFaces(faceData)
   var arrays = {
@@ -251,6 +180,34 @@ function setupModelBuffer(gl, data) {
     indices: {numComponents: 3, data: indices}
   }
   return twgl.createBufferInfoFromArrays(gl, arrays)
+}
+
+function initShip(position, shipData) {
+  var ship = new GObject
+  ship.position = position
+  ship.scale = v3.create(2,2,2)
+  // ship.rotateX= Math.PI/2
+  // ship.rotateY= Math.PI/2
+  ship.type = gameTypes.ship
+  ship.width = 15
+  ship.bufferInfo = shipData.bufferInfo
+  ship.bbox = bbox(shipData.modelData.vertices)
+  window.ship = ship
+  return ship
+}
+
+function initAsteroid(position, asteroidData) {
+  var asteroid = new GObject()
+  asteroid.type = gameTypes.asteroid
+  asteroid.velocity[0] = rand() * .5 * (rand() > .5 ? -1 : 1)
+  asteroid.velocity[1] = rand() * .5 * (rand() > .5 ? -1 : 1)
+  asteroid.width = 15
+  asteroid.position = position
+  asteroid.scale = v3.create(4,4,4)
+  asteroid.rotateZ = rand(Math.PI*2)
+  asteroid.bufferInfo = asteroidData.bufferInfo
+  asteroid.bbox = bbox(asteroidData.modelData.vertices)
+  return asteroid
 }
 
 window.on('keyup', ({keyCode}) => {
@@ -273,47 +230,52 @@ window.on('keydown', ({keyCode}) => {
   if (keyCode == keyNames.space) gameState.keys.spacePressed = true
 })
 
+function setupGameObjects(gameState, modelsData) {
+  var gl = gameState.gl
+  var shipBufferInfo = setupModelBuffer(gl, modelsData[0])
+  gameState.shipData = {bufferInfo: shipBufferInfo, modelData: modelsData[0]}
+
+  var bulletVertices = twgl.primitives.createCubeVertices(gameState.bulletSize)
+  window.bulletVertices = bulletVertices.position
+
+  gameState.bulletData = {
+    bufferInfo: twgl.primitives.createCubeBufferInfo(gl, gameState.bulletSize),
+    bbox: bbox(twgl.primitives.createCubeVertices(gameState.bulletSize).position)
+  }
+  window.modelsData = modelsData
+  var asteroidBufferInfo = setupModelBuffer(gl, modelsData[1])
+  gameState.asteroidData = {bufferInfo: asteroidBufferInfo, modelData: modelsData[1]}
+  var center = v3.create(gl.canvas.clientWidth / 2, gl.canvas.clientHeight / 2, 0)
+  gameState.objects.push(initShip(center, gameState.shipData))
+
+  var asteroidWidth = 15
+  for (var i = 0; i < gameState.numAsteroids; i++) {
+    var position = v3.create(
+      gl.canvas.clientWidth / 2 + asteroidWidth * 4,
+      gl.canvas.clientHeight / 2 + asteroidWidth * 2,
+      0
+    )
+    gameState.objects.push(initAsteroid(position, gameState.asteroidData))
+  }
+}
+
 function main(modelsData) {
   const canvas = createCanvas(gameState.canvasSize.w, gameState.canvasSize.h)
   var gl = canvas.getContext('webgl')
-  gameState.gl = gl
   var programInfo = twgl.createProgramInfo(gl, ['vs', 'fs'])
-  var ship = new GObject()
-  ship.position = v3.create(gameState.canvasSize.w / 2, gameState.canvasSize.h / 2, 0)
-  ship.scale = v3.create(2,2,2)
-  // ship.rotateX= Math.PI/2
-  // ship.rotateY= Math.PI/2
-  ship.type = gameTypes.ship
-  ship.width = 15
-  ship.bufferInfo = setupModelBuffer(gl, modelsData[0])
-  window.ship = ship
-  gameState.objects.push(ship)
+  gameState.gl = gl
+  setupGameObjects(gameState, modelsData)
 
-  var asteroid = new GObject()
-  asteroid.type = gameTypes.asteroid
-  asteroid.velocity[0] = rand() * .5 * (rand() > .5 ? -1 : 1)
-  asteroid.velocity[1] = rand() * .5 * (rand() > .5 ? -1 : 1)
-  asteroid.width = 15
-  asteroid.position = v3.create(
-    gameState.canvasSize.w / 2 + asteroid.width*2,
-    gameState.canvasSize.h / 2 + asteroid.width*2, 0
-  )
-  asteroid.scale = v3.create(2,2,2)
-  asteroid.bufferInfo = setupModelBuffer(gl, modelsData[1])
-  gameState.objects.push(asteroid)
-
-  /**
-   * Draw.
-   */
   function render(time) {
     twgl.resizeCanvasToDisplaySize(gl.canvas)
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
     const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight
-    var left = 0, right = gl.canvas.clientWidth, bottom = gl.canvas.clientHeight,
-        top = 0, near = -10, far = 10
-    var projection = m4.ortho(left, right, top, bottom, near, far)
-    var view = m4.identity()
-    uniforms.u_viewProjection = m4.multiply(projection, view)
+    var top = 0,
+        right = gl.canvas.clientWidth,
+        bottom = gl.canvas.clientHeight,
+        left = 0, near = -10, far = 10
+    m4.ortho(left, right, top, bottom, near, far, gameState.projection)
+    m4.multiply(gameState.projection, gameState.view, uniforms.u_viewProjection)
     gl.clearColor(0, 0, 0, 1)
     gl.clear(gl.COLOR_BUFFER_BIT)
     for (
@@ -321,7 +283,8 @@ function main(modelsData) {
        i < len;
        i++) {
       gameObject = gameState.objects[i]
-      uniforms.u_model = update(gl, gameObject)
+      update(gl, gameObject)
+      uniforms.u_model = gameObject.matrix
       gl.useProgram(programInfo.program)
       twgl.setBuffersAndAttributes(gl, programInfo, gameObject.bufferInfo)
       twgl.setUniforms(programInfo, uniforms)
@@ -332,10 +295,9 @@ function main(modelsData) {
   requestAnimationFrame(render)
 }
 
-
 awaitAll(
   // parial(getJson, 'models/plane.json'),
   partial(getJson, 'models/shipRotatedYUp.json'),
-  partial(getJson, 'models/asteroid.json'),
+  partial(getJson, 'models/asteroid2.json'),
   main
 )
