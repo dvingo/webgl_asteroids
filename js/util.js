@@ -1,5 +1,23 @@
 const createEl = document.createElement.bind(document)
 
+export var getTime = () => new Date().getTime()
+
+export function range(n, m, s) {
+  var r = []
+  var start = m ? n : 0
+  m = m || n
+  s = s || 1
+  for (var i = start; i < m; i += s) r.push(i)
+  return r
+}
+
+export function findIndex(f, arr) {
+  for (var i = 0, len = arr.length; i < len; i++) {
+    if (f(arr[i])) return i
+  }
+  return -1
+}
+
 export function awaitAll() {
   var cbs = arguments
   var r = [], count = cbs.length-1

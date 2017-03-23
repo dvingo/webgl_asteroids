@@ -3,13 +3,42 @@ import chroma from 'chroma-js'
 import parseModel from './parseJson'
 import {
   awaitAll, bbox, partial, throttle, rand, randInt, objFromStrs,
-  createCanvas, validKeys, keyNames, getJson, lerp
+  createCanvas, validKeys, keyNames, getJson, lerp, range, findIndex, getTime
 } from './util'
 const { m4, v3 } = twgl
 window.twgl = twgl
 window.m4 = m4, window.v3=v3
 
 EventTarget.prototype.on = function(){this.addEventListener.apply(this,arguments)}
+
+function makePool(constructor, count) {
+  var pool = []
+  var freeList = range(count)
+  window.pool = pool
+  window.freeList =freeList
+  for (var i=0; i < count; i++) pool.push(constructor())
+  return {
+    get: function() {
+      var i = freeList[0]
+      freeList.splice(0, 1)
+      if (freeList.length) {
+        // TODO grow list and pool
+      }
+      console.log('in get returning index: ', i)
+      return pool[i]
+    },
+    free: function(obj) {
+      var i = findIndex(i => i === obj, pool)
+      console.log('in Free, index is: ', i)
+      freeList.push(i)
+    }
+  }
+}
+
+function bulletMaker() {
+  var bullet = new GObject
+  return bullet
+}
 
 const gameState = {
   thrust: .03,
@@ -29,8 +58,10 @@ const gameState = {
   objects: [],
   getShip: function(){return this.objects[0]},
   bulletLifetimeMs: 4000,
+  bulletData: null,
   bulletSpeed: 2,
   bulletSize: 2,
+  bulletPool: makePool(bulletMaker, 200),
   projection: m4.identity(),
   view: m4.identity(),
   uniforms: {
@@ -58,7 +89,7 @@ function GObject() {
   this.height = 0
   this.type = ''
   this.bufferInfo = null
-  this.createdTime = new Date().getTime()
+  this.createdTime = getTime()
   this.shouldRemove = false
 }
 
@@ -76,8 +107,10 @@ const setV3Angle = (v, a) => {
   v[1] = Math.sin(a) * len
 }
 
-function makeBullet(gl, ship, bulletData) {
-  var bullet = new GObject
+function makeBullet(gl, ship, bulletData, bulletPool) {
+  var bullet = bulletPool.get()
+  bullet.createdTime = getTime()
+  bullet.shouldRemove = false
   bullet.type = gameTypes.bullet
   setV3Length(bullet.velocity, v3.length(ship.velocity) + gameState.bulletSpeed)
   setV3Angle(bullet.velocity, ship.rotateZ)
@@ -88,7 +121,9 @@ function makeBullet(gl, ship, bulletData) {
 }
 
 const throttledMakeBullet = throttle(function() {
-  gameState.objects.push(makeBullet(gameState.gl, gameState.getShip(), gameState.bulletData))
+  gameState.objects.push(makeBullet(
+    gameState.gl, gameState.getShip(), gameState.bulletData, gameState.bulletPool
+  ))
 }, 100)
 
 function isAccelerating(gameState) {
@@ -163,13 +198,6 @@ function defaultUpdate(gObj, gameState, t) {
   m4.scale(gObj.matrix, gObj.scaleV3, gObj.matrix)
 }
 
-function findIndex(item, list) {
-  for (var i = 0, len = list.length;i < len;i++)
-    if (item === list[i]) return i
-  return -1
-}
-
-var getTime = () => new Date().getTime(0)
 
 function updateBullet(bullet, gameState, t) {
   if (getTime() - bullet.createdTime > gameState.bulletLifetimeMs)
@@ -191,7 +219,6 @@ function update(gObject, t) {
 const log = throttle((...args) => console.log.apply(console, args), 1000)
 
 function setupModelBuffer(gl, data) {
-  window.data=data
   var faceData = parseModel.parseJson(data)
   var indices = parseModel.getIndicesFromFaces(faceData)
   var arrays = {
@@ -328,8 +355,16 @@ function main(modelsData) {
       gl.drawElements(gl.TRIANGLES, gameObject.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
     }
 
-    // This is only for bullets (particles), should use object pool for memory
-    gameState.objects = gameState.objects.filter(i => !i.shouldRemove)
+    for (var i = 0, len = gameState.objects.length; i < len; i++) {
+      var gObj = gameState.objects[i]
+      if (gObj.shouldRemove && gObj.type === gameTypes.bullet) {
+        gameState.bulletPool.free(gObj)
+      }
+    }
+
+    gameState.objects = gameState.objects.filter(
+      gObj => !(gObj.shouldRemove && gObj.type === gameTypes.bullet)
+    )
 
     requestAnimationFrame(loop)
   }
