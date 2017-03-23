@@ -3,37 +3,14 @@ import chroma from 'chroma-js'
 import parseModel from './parseJson'
 import {
   awaitAll, bbox, partial, throttle, rand, randInt, objFromStrs,
-  createCanvas, validKeys, keyNames, getJson, lerp, range, findIndex, getTime
+  createCanvas, validKeys, keyNames, getJson, lerp, range, findIndex, getTime,
+  makePool
 } from './util'
 const { m4, v3 } = twgl
 window.twgl = twgl
 window.m4 = m4, window.v3=v3
 
 EventTarget.prototype.on = function(){this.addEventListener.apply(this,arguments)}
-
-function makePool(constructor, count) {
-  var pool = []
-  var freeList = range(count)
-  window.pool = pool
-  window.freeList =freeList
-  for (var i=0; i < count; i++) pool.push(constructor())
-  return {
-    get: function() {
-      var i = freeList[0]
-      freeList.splice(0, 1)
-      if (freeList.length) {
-        // TODO grow list and pool
-      }
-      console.log('in get returning index: ', i)
-      return pool[i]
-    },
-    free: function(obj) {
-      var i = findIndex(i => i === obj, pool)
-      console.log('in Free, index is: ', i)
-      freeList.push(i)
-    }
-  }
-}
 
 function bulletMaker() {
   var bullet = new GObject
@@ -61,7 +38,7 @@ const gameState = {
   bulletData: null,
   bulletSpeed: 2,
   bulletSize: 2,
-  bulletPool: makePool(bulletMaker, 200),
+  bulletPool: makePool(bulletMaker, 40),
   projection: m4.identity(),
   view: m4.identity(),
   uniforms: {
@@ -198,7 +175,6 @@ function defaultUpdate(gObj, gameState, t) {
   m4.scale(gObj.matrix, gObj.scaleV3, gObj.matrix)
 }
 
-
 function updateBullet(bullet, gameState, t) {
   if (getTime() - bullet.createdTime > gameState.bulletLifetimeMs)
     bullet.shouldRemove = true
@@ -212,7 +188,7 @@ objTypeToUpdateFn[gameTypes.ship] = updateShip
 objTypeToUpdateFn[gameTypes.bullet] = updateBullet
 window.objTypeToUpdateFn = objTypeToUpdateFn
 
-function update(gObject, t) {
+function update(gObject, gameState, t) {
   return (objTypeToUpdateFn[gObject.type] || defaultUpdate)(gObject, gameState, t)
 }
 
@@ -336,11 +312,8 @@ function main(modelsData) {
     m4.multiply(gameState.projection, gameState.view, gameState.uniforms.u_viewProjection)
     gl.clearColor(0, 0, 0, 1)
     gl.clear(gl.COLOR_BUFFER_BIT)
-    for (
-      var i = 0, len = gameState.objects.length;
-       i < len;
-       i++) {
-      update(gameState.objects[i], time)
+    for (var i = 0, len = gameState.objects.length; i < len; i++) {
+      update(gameState.objects[i], gameState, time)
     }
 
     for (

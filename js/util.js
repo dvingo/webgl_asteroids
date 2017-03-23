@@ -1,5 +1,26 @@
 const createEl = document.createElement.bind(document)
 
+export function makePool(constructor, count) {
+  var pool = []
+  var freeList = range(count)
+  var growAmount = 20
+  for (var z=0; z < count; z++) pool.push(constructor())
+  return {
+    get: function() {
+      var i = freeList[0]
+      freeList.splice(0, 1)
+      if (!freeList.length) {
+        freeList = freeList.concat(range(pool.length, pool.length + growAmount))
+        for (var k=0; k < growAmount; k++) pool.push(constructor())
+      }
+      return pool[i]
+    },
+    free: function(obj) {
+      freeList.push(findIndex(o => o === obj, pool))
+    }
+  }
+}
+
 export var getTime = () => new Date().getTime()
 
 export function range(n, m, s) {
