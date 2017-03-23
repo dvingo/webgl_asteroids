@@ -12,14 +12,10 @@ window.m4 = m4, window.v3=v3
 
 EventTarget.prototype.on = function(){this.addEventListener.apply(this,arguments)}
 
-function bulletMaker() {
-  var bullet = new GObject
-  return bullet
-}
+function bulletMaker() { return new GObject }
 
 const gameState = {
   thrust: .03,
-  maxAcc: .03,
   maxVelocity: 10,
   rotateBy: Math.PI/80,
   numAsteroids: 10,
@@ -180,8 +176,6 @@ function updateBullet(bullet, gameState, t) {
     bullet.shouldRemove = true
   defaultUpdate(bullet, gameState, t)
 }
-
-function updateNoop(){return m4.identity()}
 
 var objTypeToUpdateFn = { }
 objTypeToUpdateFn[gameTypes.ship] = updateShip
