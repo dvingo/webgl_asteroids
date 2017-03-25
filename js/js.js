@@ -45,19 +45,19 @@ function createTypedArray(numComponents, numElements, optionalType) {
   return augmentTypedArray(new Type(numComponents * numElements), numComponents);
 }
 
+// Example vertices for a 5 wide cube, grouped into six faces.
 var fiveCube = [
   5,  5, -5,
   5,  5, 5,
   5, -5, 5,
-
  5,-5,-5,
+
  -5,5,5,
  -5,5,-5,
-
  -5,-5,-5,
  -5,-5,5,
- -5,5,5,
 
+ -5,5,5,
  5,5,5,
  5,5,-5,
  -5,5,-5,
@@ -65,44 +65,43 @@ var fiveCube = [
  -5,-5,-5,
  5,-5,-5,
  5,-5,5,
-
  -5,-5,5,
+
  5,5,5,
  -5,5,5,
-
  -5,-5,5,
  5,-5,5,
- -5,5,-5,
 
+ -5,5,-5,
  5,5,-5,
  5,-5,-5,
  -5,-5,-5
 ]
 
-function createRectanglurPrizm(gl, h, w) {
+function createRectanglurPrizm(gl, width, height) {
   var z = 1
   const numFaces = 6
   const numVerticesPerFace = 4
-  var j = h / 2
-  var k = w / 2
+  const x = width / 2
+  const y = height / 2
 
   var cubeFaceIndices = [
     [3, 7, 5, 1], // right
     [6, 2, 0, 4], // left
-    [6, 7, 3, 2],
-    [0, 1, 5, 4],
+    [6, 7, 3, 2], // top
+    [0, 1, 5, 4], // bottom
     [7, 6, 4, 5], // front
     [2, 3, 1, 0], // back
   ]
   var cornerVertices = [
-    [-k, -k, -k], // 0
-    [ k, -k, -k], // 1
-    [-k,  k, -k], // 2
-    [ k,  k, -k], // 3
-    [-k, -k,  k], // 4
-    [ k, -k,  k], // 5
-    [-k,  k,  k], // 6
-    [ k,  k,  k]  // 7
+    [-x, -y, -z], // 0, frontBottomLeft
+    [ x, -y, -z], // 1, frontBottomRight
+    [-x,  y, -z], // 2, frontTopLeft
+    [ x,  y, -z], // 3, frontTopRight
+    [-x, -y,  z], // 4, backBottomLeft
+    [ x, -y,  z], // 5, backBottomRight
+    [-x,  y,  z], // 6, backTopLeft
+    [ x,  y,  z]  // 7, backTopRight
   ]
   var numVertices = numFaces * numVerticesPerFace
   var positions = createTypedArray(3, numVertices)
@@ -119,14 +118,14 @@ function createRectanglurPrizm(gl, h, w) {
     indices.push(offset, offset + 1, offset + 2)
     indices.push(offset, offset + 2, offset + 3)
   }
-  console.log('Positions: ', positions);
-  console.log('indices: ', indices);
+  // console.log('Positions: ', positions);
+  // console.log('indices: ', indices);
   var bi = twgl.createBufferInfoFromArrays(gl, {
     position: positions,
     // position : new Float32Array(fiveCube),
     indices: indices
   })
-  console.log('Bi: ', bi);
+  // console.log('Bi: ', bi);
   return bi
 }
 
@@ -184,7 +183,7 @@ function GObject() {
   this.shouldRemove = false
 }
 
-const getV3Angle = (v) => Math.atan2(v[1], v[0])
+const getV3Angle = v => Math.atan2(v[1], v[0])
 
 const setV3Length = (v, length) => {
   var angle = getV3Angle(v)
@@ -215,12 +214,12 @@ function makeBullet(gl, ship, bulletData, bulletPool) {
 function makeRect(gl, w, h) {
   var g = new GObject
   g.position = v3.create(200, 200, 0)
-  g.bufferInfo = twgl.primitives.createCubeBufferInfo(gl, 10)
-  g.bufferInfo = createRectanglurPrizm(gl, 20, 20)
+  //g.bufferInfo = twgl.primitives.createCubeBufferInfo(gl, 10)
+  g.bufferInfo = createRectanglurPrizm(gl, w, h)
   g.rotateZ = 0//Math.PI
-  g.rotateX = Math.PI / 6
+  //g.rotateX = Math.PI / 6
   // g.rotateY = Math.PI / 2
-  console.log('buffer info for rect: ', g.bufferInfo);
+  // console.log('buffer info for rect: ', g.bufferInfo);
   return g
 }
 
@@ -240,22 +239,57 @@ function isAccelerating(gameState) {
  * @param {GObject} obj2
  */
 function intersects(obj1, obj2) {
+  var o1XMin = (obj1.bbox.x.min) + obj1.position[0]
+  var o1XMax = (obj1.bbox.x.max) + obj1.position[0]
+  var o2XMin = (obj2.bbox.x.min) + obj2.position[0]
+  var o2XMax = (obj2.bbox.x.max) + obj2.position[0]
+
+  var o1YMin = (obj1.bbox.y.min) + obj1.position[1]
+  var o1YMax = (obj1.bbox.y.max) + obj1.position[1]
+  var o2YMin = (obj2.bbox.y.min) + obj2.position[1]
+  var o2YMax = (obj2.bbox.y.max) + obj2.position[1]
+
+
+  var o1W = obj1.bbox.x.max - obj1.bbox.x.min
+  var o1H = obj1.bbox.y.max - obj1.bbox.y.min
+  var o2W = obj2.bbox.x.max - obj2.bbox.x.min
+  var o2H = obj2.bbox.y.max - obj2.bbox.y.min
+
+  var o1XMin =  obj1.position[0]
+  var o1XMax =  (obj1.position[0] + o1W)
+  var o2XMin =  obj2.position[0]
+  var o2XMax =  (obj2.position[0] + o2W)
+
+  var o1YMin =  obj1.position[1]
+  var o1YMax =  obj1.position[1] +o1H
+  var o2YMin =  obj2.position[1]
+  var o2YMax =  obj2.position[1] + o2H
+  return (
+    // X intersect
+    ( o1XMin <= o2XMax && o1XMax >= o2XMin )
+    &&
+    // Y intersect
+    ( o1YMin <= o2YMax && o1YMax >= o2YMin )
+  )
+
+/*
   return (
     // X intersect
     (
-     obj1.position[0] <= (obj2.position[0] + obj2.width) &&
-     obj1.position[0] + obj1.width >= obj2.position[0]
+     (obj1.bbox.x.min + obj1.position[0]) <= (obj2.bbox.x.max + obj2.position[0]) &&
+     (obj1.bbox.x.max + obj1.position[0]) >= (obj2.bbox.x.min + obj2.position[0])
     )
     &&
     // Y intersect
     (
-     obj1.position[1] <= (obj2.position[1] + obj2.width) &&
-     obj1.position[1] + obj1.width >= obj2.position[1]
+     (obj1.bbox.y.min + obj1.position[1]) <= (obj2.bbox.y.max + obj2.position[1]) &&
+     (obj1.bbox.y.max + obj1.position[1]) >= (obj2.bbox.y.min + obj2.position[1])
     )
-   )
+  )
+  */
 }
 
-const setV3 = (v, x,y,z) => {v[0]=x,v[1]=y,v[2]=z}
+const setV3 = (v, x,y,z) => (v[0]=x,v[1]=y,v[2]=z)
 
 function updateShip(ship, gameState, t) {
   var gl = gameState.gl
@@ -385,6 +419,7 @@ function initAsteroid(screenSize, asteroidData) {
   asteroid.type = gameTypes.asteroid
   asteroid.velocity[0] = rand() * .5 * (rand() > .5 ? -1 : 1)
   asteroid.velocity[1] = rand() * .5 * (rand() > .5 ? -1 : 1)
+  setV3(asteroid.velocity, 0,0,0)
   asteroid.scale = 4
   asteroid.scaleV3 = v3.create(asteroid.scale, asteroid.scale, asteroid.scale)
   var box = bbox(asteroidData.modelData.vertices)
@@ -440,7 +475,7 @@ function setupGameObjects(gameState, modelsData) {
   var center = v3.create(gl.canvas.clientWidth / 2, gl.canvas.clientHeight / 2, 0)
   gameState.objects.push(initShip(center, gameState.shipData))
 
-  gameState.objects.push(makeRect(gl, 200, 400))
+  // gameState.objects.push(makeRect(gl, 100, 50))
 
   var screenSize = {
     w:gl.canvas.clientWidth, h: gl.canvas.clientHeight
@@ -486,6 +521,37 @@ function main(modelsData) {
       twgl.setBuffersAndAttributes(gl, programInfo, gameObject.bufferInfo)
       twgl.setUniforms(programInfo, gameState.uniforms)
       gl.drawElements(gl.LINES, gameObject.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
+
+      // if (gameObject.type === gameTypes.asteroid) {
+      var  go = gameObject
+        // const r = makeRect(gl, gameObject.width, gameObject.height)
+        const r = makeRect(gl, gameObject.bbox.x.max - gameObject.bbox.x.min, gameObject.bbox.y.max - gameObject.bbox.y.min)
+        // setV3(r.position,
+          // go.bbox.x.min +
+          // go.position[0],
+          // go.bbox.y.min +
+          // go.position[1], go.position[2])
+
+        setV3(r.position,
+
+          go.position[0]
+        //  - Math.abs(go.bbox.x.min)
+          ,
+         //(-go.bbox.y.min) +
+          go.position[1]
+         , 0)
+
+        m4.identity(r.matrix)
+        m4.rotateX(r.matrix, r.rotateX, r.matrix)
+        m4.rotateY(r.matrix, r.rotateY, r.matrix)
+        m4.rotateZ(r.matrix, r.rotateZ, r.matrix)
+        m4.translate(r.matrix, r.position, r.matrix)
+        m4.scale(r.matrix, r.scaleV3, r.matrix)
+        gameState.uniforms.u_model = r.matrix
+        twgl.setBuffersAndAttributes(gl, programInfo, r.bufferInfo)
+        twgl.setUniforms(programInfo, gameState.uniforms)
+        gl.drawElements(gl.LINES, r.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
+      // }
     }
 
     for (var i = 0, len = gameState.objects.length; i < len; i++) {
