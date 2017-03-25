@@ -14,6 +14,122 @@ EventTarget.prototype.on = function(){this.addEventListener.apply(this,arguments
 
 function bulletMaker() { return new GObject }
 
+function augmentTypedArray(typedArray, numComponents) {
+  var cursor = 0;
+  typedArray.push = function() {
+    for (var ii = 0; ii < arguments.length; ++ii) {
+      var value = arguments[ii];
+      if (value instanceof Array || (value.buffer && value.buffer instanceof ArrayBuffer)) {
+        for (var jj = 0; jj < value.length; ++jj) {
+          typedArray[cursor++] = value[jj];
+        }
+      } else {
+        typedArray[cursor++] = value;
+      }
+    }
+  };
+  typedArray.reset = function(opt_index) {
+    cursor = opt_index || 0;
+  };
+  typedArray.numComponents = numComponents;
+  Object.defineProperty(typedArray, 'numElements', {
+    get: function() {
+      return this.length / this.numComponents | 0;
+    },
+  });
+  return typedArray;
+}
+
+function createTypedArray(numComponents, numElements, optionalType) {
+  var Type = optionalType || Float32Array
+  return augmentTypedArray(new Type(numComponents * numElements), numComponents);
+}
+
+var fiveCube = [
+  5,  5, -5,
+  5,  5, 5,
+  5, -5, 5,
+
+ 5,-5,-5,
+ -5,5,5,
+ -5,5,-5,
+
+ -5,-5,-5,
+ -5,-5,5,
+ -5,5,5,
+
+ 5,5,5,
+ 5,5,-5,
+ -5,5,-5,
+
+ -5,-5,-5,
+ 5,-5,-5,
+ 5,-5,5,
+
+ -5,-5,5,
+ 5,5,5,
+ -5,5,5,
+
+ -5,-5,5,
+ 5,-5,5,
+ -5,5,-5,
+
+ 5,5,-5,
+ 5,-5,-5,
+ -5,-5,-5
+]
+
+function createRectanglurPrizm(gl, h, w) {
+  var z = 1
+  const numFaces = 6
+  const numVerticesPerFace = 4
+  var j = h / 2
+  var k = w / 2
+
+  var cubeFaceIndices = [
+    [3, 7, 5, 1], // right
+    [6, 2, 0, 4], // left
+    [6, 7, 3, 2],
+    [0, 1, 5, 4],
+    [7, 6, 4, 5], // front
+    [2, 3, 1, 0], // back
+  ]
+  var cornerVertices = [
+    [-k, -k, -k], // 0
+    [ k, -k, -k], // 1
+    [-k,  k, -k], // 2
+    [ k,  k, -k], // 3
+    [-k, -k,  k], // 4
+    [ k, -k,  k], // 5
+    [-k,  k,  k], // 6
+    [ k,  k,  k]  // 7
+  ]
+  var numVertices = numFaces * numVerticesPerFace
+  var positions = createTypedArray(3, numVertices)
+  var indices = createTypedArray(3, numFaces * 2, Uint16Array)
+
+  for (var f = 0; f < numFaces; f++) {
+    var faceIndices = cubeFaceIndices[f]
+    for (var v = 0; v < numVerticesPerFace; v++) {
+      var position = cornerVertices[faceIndices[v]]
+      positions.push(position)
+    }
+    // Two triangles make a square face.
+    var offset = 4 * f
+    indices.push(offset, offset + 1, offset + 2)
+    indices.push(offset, offset + 2, offset + 3)
+  }
+  console.log('Positions: ', positions);
+  console.log('indices: ', indices);
+  var bi = twgl.createBufferInfoFromArrays(gl, {
+    position: positions,
+    // position : new Float32Array(fiveCube),
+    indices: indices
+  })
+  console.log('Bi: ', bi);
+  return bi
+}
+
 const gameState = {
   thrust: .03,
   maxVelocity: 10,
@@ -39,7 +155,8 @@ const gameState = {
   view: m4.identity(),
   uniforms: {
     u_viewProjection: m4.identity(),
-    u_model: m4.identity()
+    u_model: m4.identity(),
+    color: v3.create(.8, .8, .8)
   }
 }
 window.gameState = gameState
@@ -62,6 +179,7 @@ function GObject() {
   this.height = 0
   this.type = ''
   this.bufferInfo = null
+  this.color = v3.create(.8, .8, .8)
   this.createdTime = getTime()
   this.shouldRemove = false
 }
@@ -89,8 +207,21 @@ function makeBullet(gl, ship, bulletData, bulletPool) {
   setV3Angle(bullet.velocity, ship.rotateZ)
   bullet.bufferInfo = bulletData.bufferInfo
   bullet.bbox = bulletData.bbox
+  bullet.bboxV3 = vec3.create()
   bullet.position = v3.copy(ship.position)
   return bullet
+}
+
+function makeRect(gl, w, h) {
+  var g = new GObject
+  g.position = v3.create(200, 200, 0)
+  g.bufferInfo = twgl.primitives.createCubeBufferInfo(gl, 10)
+  g.bufferInfo = createRectanglurPrizm(gl, 20, 20)
+  g.rotateZ = 0//Math.PI
+  g.rotateX = Math.PI / 6
+  // g.rotateY = Math.PI / 2
+  console.log('buffer info for rect: ', g.bufferInfo);
+  return g
 }
 
 const throttledMakeBullet = throttle(function() {
@@ -103,6 +234,28 @@ function isAccelerating(gameState) {
   return gameState.keys.upPressed ||
          gameState.keys.downPressed
 }
+
+/**
+ * @param {GObject} obj1
+ * @param {GObject} obj2
+ */
+function intersects(obj1, obj2) {
+  return (
+    // X intersect
+    (
+     obj1.position[0] <= (obj2.position[0] + obj2.width) &&
+     obj1.position[0] + obj1.width >= obj2.position[0]
+    )
+    &&
+    // Y intersect
+    (
+     obj1.position[1] <= (obj2.position[1] + obj2.width) &&
+     obj1.position[1] + obj1.width >= obj2.position[1]
+    )
+   )
+}
+
+const setV3 = (v, x,y,z) => {v[0]=x,v[1]=y,v[2]=z}
 
 function updateShip(ship, gameState, t) {
   var gl = gameState.gl
@@ -139,6 +292,15 @@ function updateShip(ship, gameState, t) {
 
   if (gameState.keys.spacePressed) throttledMakeBullet()
 
+  gameState.objects.forEach(obj => {
+    setV3(obj.color, .8, .8, .8)
+    if (obj === ship) return
+    if (intersects(obj, ship)) {
+      setV3(ship.color, 1, 0, 0)
+      setV3(obj.color, 1, 0, 0)
+    }
+  })
+
   var m = ship.matrix
   m4.identity(m)
   m4.translate(m, ship.position, m)
@@ -163,6 +325,7 @@ function defaultUpdate(gObj, gameState, t) {
 
   if (gObj.position[1] > gl.canvas.clientHeight + gObj.height)
     gObj.position[1] = -gObj.height
+
   m4.identity(gObj.matrix)
   m4.translate(gObj.matrix, gObj.position, gObj.matrix)
   m4.rotateX(gObj.matrix, gObj.rotateX, gObj.matrix)
@@ -183,7 +346,7 @@ objTypeToUpdateFn[gameTypes.bullet] = updateBullet
 window.objTypeToUpdateFn = objTypeToUpdateFn
 
 function update(gObject, gameState, t) {
-  return (objTypeToUpdateFn[gObject.type] || defaultUpdate)(gObject, gameState, t)
+  (objTypeToUpdateFn[gObject.type] || defaultUpdate)(gObject, gameState, t)
 }
 
 const log = throttle((...args) => console.log.apply(console, args), 1000)
@@ -211,9 +374,8 @@ function initShip(position, shipData) {
 
   var box = bbox(shipData.modelData.vertices)
   ship.bbox = box
-  ship.width = (box.x.max - box.x.min) * ship.scale
-  ship.height = (box.y.max - box.y.min) * ship.scale
-
+  ship.width = ship.width = (box.x.max - box.x.min) * ship.scale
+  ship.height = ship.height = (box.y.max - box.y.min) * ship.scale
   window.ship = ship
   return ship
 }
@@ -235,7 +397,7 @@ function initAsteroid(screenSize, asteroidData) {
     0
   )
   // TODO padding around ship in center
-  asteroid.rotateZ = rand(Math.PI*2)
+  asteroid.rotateZ = 0//rand(Math.PI*2)
   asteroid.bufferInfo = asteroidData.bufferInfo
   return asteroid
 }
@@ -278,7 +440,8 @@ function setupGameObjects(gameState, modelsData) {
   var center = v3.create(gl.canvas.clientWidth / 2, gl.canvas.clientHeight / 2, 0)
   gameState.objects.push(initShip(center, gameState.shipData))
 
-  var asteroidWidth = 15
+  gameState.objects.push(makeRect(gl, 200, 400))
+
   var screenSize = {
     w:gl.canvas.clientWidth, h: gl.canvas.clientHeight
   }
@@ -306,20 +469,23 @@ function main(modelsData) {
     m4.multiply(gameState.projection, gameState.view, gameState.uniforms.u_viewProjection)
     gl.clearColor(0, 0, 0, 1)
     gl.clear(gl.COLOR_BUFFER_BIT)
+
     for (var i = 0, len = gameState.objects.length; i < len; i++) {
+    // TOOD  represent bbox as 4 vec3's so you can multiply them by
+    // the rotateZ to get their new position
+    // then use this to update the object's width and height
       update(gameState.objects[i], gameState, time)
     }
 
-    for (
-      var i = 0, len = gameState.objects.length, gameObject;
-       i < len;
-       i++) {
+    var gameObject
+    for (var i = 0, len = gameState.objects.length; i < len; i++) {
       gameObject = gameState.objects[i]
       gameState.uniforms.u_model = gameObject.matrix
+      gameState.uniforms.color = gameObject.color
       gl.useProgram(programInfo.program)
       twgl.setBuffersAndAttributes(gl, programInfo, gameObject.bufferInfo)
       twgl.setUniforms(programInfo, gameState.uniforms)
-      gl.drawElements(gl.TRIANGLES, gameObject.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
+      gl.drawElements(gl.LINES, gameObject.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
     }
 
     for (var i = 0, len = gameState.objects.length; i < len; i++) {
