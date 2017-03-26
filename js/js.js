@@ -4,7 +4,7 @@ import parseModel from './parseJson'
 import {
   awaitAll, bbox, partial, throttle, rand, randInt, objFromStrs,
   createCanvas, validKeys, keyNames, getJson, lerp, range, findIndex, getTime,
-  makePool
+  makePool, createRectanglurPrizm
 } from './util'
 const { m4, v3 } = twgl
 window.twgl = twgl
@@ -13,121 +13,6 @@ window.m4 = m4, window.v3=v3
 EventTarget.prototype.on = function(){this.addEventListener.apply(this,arguments)}
 
 function bulletMaker() { return new GObject }
-
-function augmentTypedArray(typedArray, numComponents) {
-  var cursor = 0;
-  typedArray.push = function() {
-    for (var ii = 0; ii < arguments.length; ++ii) {
-      var value = arguments[ii];
-      if (value instanceof Array || (value.buffer && value.buffer instanceof ArrayBuffer)) {
-        for (var jj = 0; jj < value.length; ++jj) {
-          typedArray[cursor++] = value[jj];
-        }
-      } else {
-        typedArray[cursor++] = value;
-      }
-    }
-  };
-  typedArray.reset = function(opt_index) {
-    cursor = opt_index || 0;
-  };
-  typedArray.numComponents = numComponents;
-  Object.defineProperty(typedArray, 'numElements', {
-    get: function() {
-      return this.length / this.numComponents | 0;
-    },
-  });
-  return typedArray;
-}
-
-function createTypedArray(numComponents, numElements, optionalType) {
-  var Type = optionalType || Float32Array
-  return augmentTypedArray(new Type(numComponents * numElements), numComponents);
-}
-
-// Example vertices for a 5 wide cube, grouped into six faces.
-var fiveCube = [
-  5,  5, -5,
-  5,  5, 5,
-  5, -5, 5,
- 5,-5,-5,
-
- -5,5,5,
- -5,5,-5,
- -5,-5,-5,
- -5,-5,5,
-
- -5,5,5,
- 5,5,5,
- 5,5,-5,
- -5,5,-5,
-
- -5,-5,-5,
- 5,-5,-5,
- 5,-5,5,
- -5,-5,5,
-
- 5,5,5,
- -5,5,5,
- -5,-5,5,
- 5,-5,5,
-
- -5,5,-5,
- 5,5,-5,
- 5,-5,-5,
- -5,-5,-5
-]
-
-function createRectanglurPrizm(gl, width, height) {
-  var z = 1
-  const numFaces = 6
-  const numVerticesPerFace = 4
-  const x = width / 2
-  const y = height / 2
-
-  var cubeFaceIndices = [
-    [3, 7, 5, 1], // right
-    [6, 2, 0, 4], // left
-    [6, 7, 3, 2], // top
-    [0, 1, 5, 4], // bottom
-    [7, 6, 4, 5], // front
-    [2, 3, 1, 0], // back
-  ]
-  var cornerVertices = [
-    [-x, -y, -z], // 0, frontBottomLeft
-    [ x, -y, -z], // 1, frontBottomRight
-    [-x,  y, -z], // 2, frontTopLeft
-    [ x,  y, -z], // 3, frontTopRight
-    [-x, -y,  z], // 4, backBottomLeft
-    [ x, -y,  z], // 5, backBottomRight
-    [-x,  y,  z], // 6, backTopLeft
-    [ x,  y,  z]  // 7, backTopRight
-  ]
-  var numVertices = numFaces * numVerticesPerFace
-  var positions = createTypedArray(3, numVertices)
-  var indices = createTypedArray(3, numFaces * 2, Uint16Array)
-
-  for (var f = 0; f < numFaces; f++) {
-    var faceIndices = cubeFaceIndices[f]
-    for (var v = 0; v < numVerticesPerFace; v++) {
-      var position = cornerVertices[faceIndices[v]]
-      positions.push(position)
-    }
-    // Two triangles make a square face.
-    var offset = 4 * f
-    indices.push(offset, offset + 1, offset + 2)
-    indices.push(offset, offset + 2, offset + 3)
-  }
-  // console.log('Positions: ', positions);
-  // console.log('indices: ', indices);
-  var bi = twgl.createBufferInfoFromArrays(gl, {
-    position: positions,
-    // position : new Float32Array(fiveCube),
-    indices: indices
-  })
-  // console.log('Bi: ', bi);
-  return bi
-}
 
 const gameState = {
   thrust: .03,
@@ -213,13 +98,7 @@ function makeBullet(gl, ship, bulletData, bulletPool) {
 
 function makeRect(gl, w, h) {
   var g = new GObject
-  g.position = v3.create(200, 200, 0)
-  //g.bufferInfo = twgl.primitives.createCubeBufferInfo(gl, 10)
   g.bufferInfo = createRectanglurPrizm(gl, w, h)
-  g.rotateZ = 0//Math.PI
-  //g.rotateX = Math.PI / 6
-  // g.rotateY = Math.PI / 2
-  // console.log('buffer info for rect: ', g.bufferInfo);
   return g
 }
 
@@ -233,6 +112,7 @@ function isAccelerating(gameState) {
   return gameState.keys.upPressed ||
          gameState.keys.downPressed
 }
+
 
 /**
  * @param {GObject} obj1
@@ -263,6 +143,7 @@ function intersects(obj1, obj2) {
   )
 }
 
+const pV3 = v => v[0] + ', ' + v[1] + ', ' + v[2]
 const setV3 = (v, x,y,z) => (v[0]=x,v[1]=y,v[2]=z)
 
 function updateShip(ship, gameState, t) {
@@ -459,26 +340,26 @@ function setupGameObjects(gameState, modelsData) {
   }
 }
 
-  function drawBbox(gl, programInfo, gameState, go) {
-    var w = (go.bbox.x.max - go.bbox.x.min)
-    var h = (go.bbox.y.max - go.bbox.y.min)
-    const r = makeRect(gl, w, h)
-    const wOffset = (w/2 - Math.abs(go.bbox.x.min)) * go.scale
-    const hOffset = (h/2 - Math.abs(go.bbox.y.min)) * go.scale
-    var translateTo = v3.create(
-      go.position[0] + wOffset,
-      go.position[1] + hOffset,
-      go.position[2]
-    )
-    setV3(r.position, translateTo[0], translateTo[1],translateTo[2])
-    m4.identity(r.matrix)
-    m4.translate(r.matrix, r.position, r.matrix)
-    m4.scale(r.matrix, go.scaleV3, r.matrix)
-    gameState.uniforms.u_model = r.matrix
-    twgl.setBuffersAndAttributes(gl, programInfo, r.bufferInfo)
-    twgl.setUniforms(programInfo, gameState.uniforms)
-    gl.drawElements(gl.LINES, r.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
-  }
+function drawBbox(gl, programInfo, gameState, go) {
+  var w = (go.bbox.x.max - go.bbox.x.min)
+  var h = (go.bbox.y.max - go.bbox.y.min)
+  const r = makeRect(gl, w, h)
+  const wOffset = (w/2 - Math.abs(go.bbox.x.min)) * go.scale
+  const hOffset = (h/2 - Math.abs(go.bbox.y.min)) * go.scale
+  setV3(r.position,
+    go.position[0] + wOffset,
+    go.position[1] + hOffset,
+    go.position[2]
+  )
+
+  m4.identity(r.matrix)
+  m4.translate(r.matrix, r.position, r.matrix)
+  m4.scale(r.matrix, go.scaleV3, r.matrix)
+  gameState.uniforms.u_model = r.matrix
+  twgl.setBuffersAndAttributes(gl, programInfo, r.bufferInfo)
+  twgl.setUniforms(programInfo, gameState.uniforms)
+  gl.drawElements(gl.LINES, r.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
+}
 
 function drawGameObject(gameObject, gameState, programInfo) {
   var gl = gameState.gl
@@ -532,7 +413,6 @@ function main(modelsData) {
     gameState.objects = gameState.objects.filter(
       gObj => !(gObj.shouldRemove && gObj.type === gameTypes.bullet)
     )
-
     requestAnimationFrame(loop)
   }
   requestAnimationFrame(loop)

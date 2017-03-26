@@ -142,3 +142,114 @@ export const getJson = (endpoint, cb) => {
   xhr.send()
 }
 export function lerp(t, n, m) { return n + t*(m-n) }
+
+function augmentTypedArray(typedArray, numComponents) {
+  var cursor = 0;
+  typedArray.push = function() {
+    for (var ii = 0; ii < arguments.length; ++ii) {
+      var value = arguments[ii];
+      if (value instanceof Array || (value.buffer && value.buffer instanceof ArrayBuffer)) {
+        for (var jj = 0; jj < value.length; ++jj) {
+          typedArray[cursor++] = value[jj];
+        }
+      } else {
+        typedArray[cursor++] = value;
+      }
+    }
+  };
+  typedArray.reset = function(opt_index) {
+    cursor = opt_index || 0;
+  };
+  typedArray.numComponents = numComponents;
+  Object.defineProperty(typedArray, 'numElements', {
+    get: function() {
+      return this.length / this.numComponents | 0;
+    },
+  });
+  return typedArray;
+}
+
+function createTypedArray(numComponents, numElements, optionalType) {
+  var Type = optionalType || Float32Array
+  return augmentTypedArray(new Type(numComponents * numElements), numComponents);
+}
+
+// Example vertices for a 5 wide cube, grouped into six faces.
+var fiveCube = [
+  5,  5, -5,
+  5,  5, 5,
+  5, -5, 5,
+ 5,-5,-5,
+
+ -5,5,5,
+ -5,5,-5,
+ -5,-5,-5,
+ -5,-5,5,
+
+ -5,5,5,
+ 5,5,5,
+ 5,5,-5,
+ -5,5,-5,
+
+ -5,-5,-5,
+ 5,-5,-5,
+ 5,-5,5,
+ -5,-5,5,
+
+ 5,5,5,
+ -5,5,5,
+ -5,-5,5,
+ 5,-5,5,
+
+ -5,5,-5,
+ 5,5,-5,
+ 5,-5,-5,
+ -5,-5,-5
+]
+
+export function createRectanglurPrizm(gl, width, height) {
+  var z = 1
+  const numFaces = 6
+  const numVerticesPerFace = 4
+  const x = width / 2
+  const y = height / 2
+
+  var cubeFaceIndices = [
+    [3, 7, 5, 1], // right
+    [6, 2, 0, 4], // left
+    [6, 7, 3, 2], // top
+    [0, 1, 5, 4], // bottom
+    [7, 6, 4, 5], // front
+    [2, 3, 1, 0], // back
+  ]
+  var cornerVertices = [
+    [-x, -y, -z], // 0, frontBottomLeft
+    [ x, -y, -z], // 1, frontBottomRight
+    [-x,  y, -z], // 2, frontTopLeft
+    [ x,  y, -z], // 3, frontTopRight
+    [-x, -y,  z], // 4, backBottomLeft
+    [ x, -y,  z], // 5, backBottomRight
+    [-x,  y,  z], // 6, backTopLeft
+    [ x,  y,  z]  // 7, backTopRight
+  ]
+  var numVertices = numFaces * numVerticesPerFace
+  var positions = createTypedArray(3, numVertices)
+  var indices = createTypedArray(3, numFaces * 2, Uint16Array)
+
+  for (var f = 0; f < numFaces; f++) {
+    var faceIndices = cubeFaceIndices[f]
+    for (var v = 0; v < numVerticesPerFace; v++) {
+      var position = cornerVertices[faceIndices[v]]
+      positions.push(position)
+    }
+    // Two triangles make a face.
+    var offset = 4 * f
+    indices.push(offset, offset + 1, offset + 2)
+    indices.push(offset, offset + 2, offset + 3)
+  }
+  var bi = twgl.createBufferInfoFromArrays(gl, {
+    position: positions,
+    indices: indices
+  })
+  return bi
+}
