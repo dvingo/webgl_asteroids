@@ -239,31 +239,6 @@ function isAccelerating(gameState) {
  * @param {GObject} obj2
  */
 function intersects(obj1, obj2) {
-  var o1Width = (obj1.bbox.x.max - obj1.bbox.x.min)
-  var o1Height = (obj1.bbox.y.max - obj1.bbox.y.min)
-  var o2Width = (obj2.bbox.x.max - obj2.bbox.x.min)
-  var o2Height = (obj2.bbox.y.max - obj2.bbox.y.min)
-
-  var o1XMin =  obj1.position[0]
-  var o1XMax =  (obj1.position[0] + o1Width)
-  var o2XMin =  obj2.position[0]
-  var o2XMax =  (obj2.position[0] + o2Width)
-
-  o1XMin =  obj1.position[0]
-  o1XMax =  (obj1.position[0] + o1Width * obj1.scale)
-  o2XMin =  obj2.position[0]
-  o2XMax =  (obj2.position[0] + o2Width *  obj2.scale )
-
-  var o1YMin =  obj1.position[1]
-  var o1YMax =  obj1.position[1] + o1Height
-  var o2YMin =  obj2.position[1]
-  var o2YMax =  obj2.position[1] + o2Height
-
-  o1YMin =  obj1.position[1]
-  o1YMax =  obj1.position[1] + o1Height * obj1.scale
-  o2YMin =  obj2.position[1]
-  o2YMax =  obj2.position[1]  + o2Height * obj2.scale
-
   var o1MinV3 = v3.create(obj1.bbox.x.min, obj1.bbox.y.min, 1)
   var o1MaxV3 = v3.create(obj1.bbox.x.max, obj1.bbox.y.max, 1)
   var o2MinV3 = v3.create(obj2.bbox.x.min, obj2.bbox.y.min, 1)
@@ -484,6 +459,27 @@ function setupGameObjects(gameState, modelsData) {
   }
 }
 
+    function drawBbox(gl, programInfo, gameState, go) {
+      var w = (go.bbox.x.max - go.bbox.x.min)
+      var h = (go.bbox.y.max - go.bbox.y.min)
+      const r = makeRect(gl, w, h)
+      const wOffset = (w/2 - Math.abs(go.bbox.x.min)) * go.scale
+      const hOffset = (h/2 - Math.abs(go.bbox.y.min)) * go.scale
+      var translateTo = v3.create(
+        go.position[0] + wOffset,
+        go.position[1] + hOffset,
+        go.position[2]
+      )
+      setV3(r.position, translateTo[0], translateTo[1],translateTo[2])
+      m4.identity(r.matrix)
+      m4.translate(r.matrix, r.position, r.matrix)
+      m4.scale(r.matrix, go.scaleV3, r.matrix)
+      gameState.uniforms.u_model = r.matrix
+      twgl.setBuffersAndAttributes(gl, programInfo, r.bufferInfo)
+      twgl.setUniforms(programInfo, gameState.uniforms)
+      gl.drawElements(gl.LINES, r.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
+    }
+
 function main(modelsData) {
   const canvas = createCanvas(gameState.canvasSize.w, gameState.canvasSize.h)
   var gl = canvas.getContext('webgl')
@@ -520,29 +516,7 @@ function main(modelsData) {
       twgl.setBuffersAndAttributes(gl, programInfo, gameObject.bufferInfo)
       twgl.setUniforms(programInfo, gameState.uniforms)
       gl.drawElements(gl.LINES, gameObject.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
-
-      // if (gameObject.type === gameTypes.asteroid) {
-      var  go = gameObject
-      var w = (gameObject.bbox.x.max - gameObject.bbox.x.min)
-      var h = (gameObject.bbox.y.max - gameObject.bbox.y.min)
-      const r = makeRect(gl, w, h)
-      const wOffset = (w/2 - Math.abs(go.bbox.x.min)) * go.scale
-      const hOffset = (h/2 - Math.abs(go.bbox.y.min)) * go.scale
-
-      var translateTo = v3.create(
-        go.position[0] + wOffset,
-        go.position[1] + hOffset,
-        go.position[2]
-      )
-      setV3(r.position, translateTo[0], translateTo[1],translateTo[2])
-      m4.identity(r.matrix)
-      m4.translate(r.matrix, r.position, r.matrix)
-      m4.scale(r.matrix, go.scaleV3, r.matrix)
-      gameState.uniforms.u_model = r.matrix
-      twgl.setBuffersAndAttributes(gl, programInfo, r.bufferInfo)
-      twgl.setUniforms(programInfo, gameState.uniforms)
-      gl.drawElements(gl.LINES, r.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
-      // }
+      drawBbox(gl, programInfo, gameState, gameObject)
     }
 
     for (var i = 0, len = gameState.objects.length; i < len; i++) {
