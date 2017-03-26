@@ -239,31 +239,59 @@ function isAccelerating(gameState) {
  * @param {GObject} obj2
  */
 function intersects(obj1, obj2) {
-  var o1XMin = (obj1.bbox.x.min) + obj1.position[0]
-  var o1XMax = (obj1.bbox.x.max) + obj1.position[0]
-  var o2XMin = (obj2.bbox.x.min) + obj2.position[0]
-  var o2XMax = (obj2.bbox.x.max) + obj2.position[0]
-
-  var o1YMin = (obj1.bbox.y.min) + obj1.position[1]
-  var o1YMax = (obj1.bbox.y.max) + obj1.position[1]
-  var o2YMin = (obj2.bbox.y.min) + obj2.position[1]
-  var o2YMax = (obj2.bbox.y.max) + obj2.position[1]
-
-
-  var o1W = obj1.bbox.x.max - obj1.bbox.x.min
-  var o1H = obj1.bbox.y.max - obj1.bbox.y.min
-  var o2W = obj2.bbox.x.max - obj2.bbox.x.min
-  var o2H = obj2.bbox.y.max - obj2.bbox.y.min
+  var o1Width = (obj1.bbox.x.max - obj1.bbox.x.min)
+  var o1Height = (obj1.bbox.y.max - obj1.bbox.y.min)
+  var o2Width = (obj2.bbox.x.max - obj2.bbox.x.min)
+  var o2Height = (obj2.bbox.y.max - obj2.bbox.y.min)
 
   var o1XMin =  obj1.position[0]
-  var o1XMax =  (obj1.position[0] + o1W)
+  var o1XMax =  (obj1.position[0] + o1Width)
   var o2XMin =  obj2.position[0]
-  var o2XMax =  (obj2.position[0] + o2W)
+  var o2XMax =  (obj2.position[0] + o2Width)
+
+  o1XMin =  obj1.position[0]
+  o1XMax =  (obj1.position[0] + o1Width * obj1.scale)
+  o2XMin =  obj2.position[0]
+  o2XMax =  (obj2.position[0] + o2Width *  obj2.scale )
 
   var o1YMin =  obj1.position[1]
-  var o1YMax =  obj1.position[1] +o1H
+  var o1YMax =  obj1.position[1] + o1Height
   var o2YMin =  obj2.position[1]
-  var o2YMax =  obj2.position[1] + o2H
+  var o2YMax =  obj2.position[1] + o2Height
+
+  o1YMin =  obj1.position[1]
+  o1YMax =  obj1.position[1] + o1Height * obj1.scale
+  o2YMin =  obj2.position[1]
+  o2YMax =  obj2.position[1]  + o2Height * obj2.scale
+  // return (
+  //   // X intersect
+  //   ( (o1XMin * obj1.scale) <= (o2XMax * obj2.scale) && (o1XMax * obj1.scale) >= (o2XMin * obj2.scale) )
+  //   &&
+  //   // Y intersect
+  //   ( (o1YMin * obj1.scale) <= (o2YMax * obj2.scale) && (o1YMax *obj1.scale) >= (o2YMin * obj2.scale) )
+  // )
+
+  var o1MinV3 = v3.create(obj1.bbox.x.min, obj1.bbox.y.min, 1)
+  var o1MaxV3 = v3.create(obj1.bbox.x.max, obj1.bbox.y.max, 1)
+  var o2MinV3 = v3.create(obj2.bbox.x.min, obj2.bbox.y.min, 1)
+  var o2MaxV3 = v3.create(obj2.bbox.x.max, obj2.bbox.y.max, 1)
+  var m1 = m4.identity()
+  m4.translate(m1, obj1.position, m1)
+  m4.scale(m1, obj1.scaleV3, m1)
+  m4.transformPoint(m1, o1MinV3, o1MinV3)
+  m4.transformPoint(m1, o1MaxV3, o1MaxV3)
+
+  var m2 = m4.identity()
+  m4.translate(m2, obj2.position, m2)
+  m4.scale(m2, obj2.scaleV3, m2)
+  m4.transformPoint(m2, o2MinV3, o2MinV3)
+  m4.transformPoint(m2, o2MaxV3, o2MaxV3)
+
+  return (
+    (o1MinV3[0] <= o2MaxV3[0] && o1MaxV3[0] >= o2MinV3[0])
+    &&
+    (o1MinV3[1] <= o2MaxV3[1] && o1MaxV3[1] >= o2MinV3[1])
+  )
   return (
     // X intersect
     ( o1XMin <= o2XMax && o1XMax >= o2XMin )
@@ -271,22 +299,6 @@ function intersects(obj1, obj2) {
     // Y intersect
     ( o1YMin <= o2YMax && o1YMax >= o2YMin )
   )
-
-/*
-  return (
-    // X intersect
-    (
-     (obj1.bbox.x.min + obj1.position[0]) <= (obj2.bbox.x.max + obj2.position[0]) &&
-     (obj1.bbox.x.max + obj1.position[0]) >= (obj2.bbox.x.min + obj2.position[0])
-    )
-    &&
-    // Y intersect
-    (
-     (obj1.bbox.y.min + obj1.position[1]) <= (obj2.bbox.y.max + obj2.position[1]) &&
-     (obj1.bbox.y.max + obj1.position[1]) >= (obj2.bbox.y.min + obj2.position[1])
-    )
-  )
-  */
 }
 
 const setV3 = (v, x,y,z) => (v[0]=x,v[1]=y,v[2]=z)
@@ -524,33 +536,23 @@ function main(modelsData) {
 
       // if (gameObject.type === gameTypes.asteroid) {
       var  go = gameObject
-        // const r = makeRect(gl, gameObject.width, gameObject.height)
-        const r = makeRect(gl, gameObject.bbox.x.max - gameObject.bbox.x.min, gameObject.bbox.y.max - gameObject.bbox.y.min)
-        // setV3(r.position,
-          // go.bbox.x.min +
-          // go.position[0],
-          // go.bbox.y.min +
-          // go.position[1], go.position[2])
+      var w = (gameObject.bbox.x.max - gameObject.bbox.x.min)
+      var h = (gameObject.bbox.y.max - gameObject.bbox.y.min)
+      const r = makeRect(gl, w, h)
+      setV3(r.position, go.position[0], go.position[1], go.position[2])
 
-        setV3(r.position,
-
-          go.position[0]
-        //  - Math.abs(go.bbox.x.min)
-          ,
-         //(-go.bbox.y.min) +
-          go.position[1]
-         , 0)
-
-        m4.identity(r.matrix)
-        m4.rotateX(r.matrix, r.rotateX, r.matrix)
-        m4.rotateY(r.matrix, r.rotateY, r.matrix)
-        m4.rotateZ(r.matrix, r.rotateZ, r.matrix)
-        m4.translate(r.matrix, r.position, r.matrix)
-        m4.scale(r.matrix, r.scaleV3, r.matrix)
-        gameState.uniforms.u_model = r.matrix
-        twgl.setBuffersAndAttributes(gl, programInfo, r.bufferInfo)
-        twgl.setUniforms(programInfo, gameState.uniforms)
-        gl.drawElements(gl.LINES, r.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
+      var translateTo = v3.create(
+        r.position[0],
+        r.position[1],
+        r.position[2]
+      )
+      m4.identity(r.matrix)
+      m4.translate(r.matrix, translateTo, r.matrix)
+      m4.scale(r.matrix, go.scaleV3, r.matrix)
+      gameState.uniforms.u_model = r.matrix
+      twgl.setBuffersAndAttributes(gl, programInfo, r.bufferInfo)
+      twgl.setUniforms(programInfo, gameState.uniforms)
+      gl.drawElements(gl.LINES, r.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
       // }
     }
 
