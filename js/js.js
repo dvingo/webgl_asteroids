@@ -459,26 +459,37 @@ function setupGameObjects(gameState, modelsData) {
   }
 }
 
-    function drawBbox(gl, programInfo, gameState, go) {
-      var w = (go.bbox.x.max - go.bbox.x.min)
-      var h = (go.bbox.y.max - go.bbox.y.min)
-      const r = makeRect(gl, w, h)
-      const wOffset = (w/2 - Math.abs(go.bbox.x.min)) * go.scale
-      const hOffset = (h/2 - Math.abs(go.bbox.y.min)) * go.scale
-      var translateTo = v3.create(
-        go.position[0] + wOffset,
-        go.position[1] + hOffset,
-        go.position[2]
-      )
-      setV3(r.position, translateTo[0], translateTo[1],translateTo[2])
-      m4.identity(r.matrix)
-      m4.translate(r.matrix, r.position, r.matrix)
-      m4.scale(r.matrix, go.scaleV3, r.matrix)
-      gameState.uniforms.u_model = r.matrix
-      twgl.setBuffersAndAttributes(gl, programInfo, r.bufferInfo)
-      twgl.setUniforms(programInfo, gameState.uniforms)
-      gl.drawElements(gl.LINES, r.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
-    }
+  function drawBbox(gl, programInfo, gameState, go) {
+    var w = (go.bbox.x.max - go.bbox.x.min)
+    var h = (go.bbox.y.max - go.bbox.y.min)
+    const r = makeRect(gl, w, h)
+    const wOffset = (w/2 - Math.abs(go.bbox.x.min)) * go.scale
+    const hOffset = (h/2 - Math.abs(go.bbox.y.min)) * go.scale
+    var translateTo = v3.create(
+      go.position[0] + wOffset,
+      go.position[1] + hOffset,
+      go.position[2]
+    )
+    setV3(r.position, translateTo[0], translateTo[1],translateTo[2])
+    m4.identity(r.matrix)
+    m4.translate(r.matrix, r.position, r.matrix)
+    m4.scale(r.matrix, go.scaleV3, r.matrix)
+    gameState.uniforms.u_model = r.matrix
+    twgl.setBuffersAndAttributes(gl, programInfo, r.bufferInfo)
+    twgl.setUniforms(programInfo, gameState.uniforms)
+    gl.drawElements(gl.LINES, r.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
+  }
+
+function drawGameObject(gameObject, gameState, programInfo) {
+  var gl = gameState.gl
+  gameState.uniforms.u_model = gameObject.matrix
+  gameState.uniforms.color = gameObject.color
+  gl.useProgram(programInfo.program)
+  twgl.setBuffersAndAttributes(gl, programInfo, gameObject.bufferInfo)
+  twgl.setUniforms(programInfo, gameState.uniforms)
+  gl.drawElements(gl.LINES, gameObject.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
+  drawBbox(gl, programInfo, gameState, gameObject)
+}
 
 function main(modelsData) {
   const canvas = createCanvas(gameState.canvasSize.w, gameState.canvasSize.h)
@@ -507,16 +518,8 @@ function main(modelsData) {
       update(gameState.objects[i], gameState, time)
     }
 
-    var gameObject
     for (var i = 0, len = gameState.objects.length; i < len; i++) {
-      gameObject = gameState.objects[i]
-      gameState.uniforms.u_model = gameObject.matrix
-      gameState.uniforms.color = gameObject.color
-      gl.useProgram(programInfo.program)
-      twgl.setBuffersAndAttributes(gl, programInfo, gameObject.bufferInfo)
-      twgl.setUniforms(programInfo, gameState.uniforms)
-      gl.drawElements(gl.LINES, gameObject.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
-      drawBbox(gl, programInfo, gameState, gameObject)
+      drawGameObject(gameState.objects[i], gameState, programInfo)
     }
 
     for (var i = 0, len = gameState.objects.length; i < len; i++) {
