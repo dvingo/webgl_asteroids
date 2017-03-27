@@ -113,33 +113,15 @@ function isAccelerating(gameState) {
          gameState.keys.downPressed
 }
 
-
 /**
  * @param {GObject} obj1
  * @param {GObject} obj2
  */
 function intersects(obj1, obj2) {
-  var o1MinV3 = v3.create(obj1.bbox.x.min, obj1.bbox.y.min, 1)
-  var o1MaxV3 = v3.create(obj1.bbox.x.max, obj1.bbox.y.max, 1)
-  var o2MinV3 = v3.create(obj2.bbox.x.min, obj2.bbox.y.min, 1)
-  var o2MaxV3 = v3.create(obj2.bbox.x.max, obj2.bbox.y.max, 1)
-
-  var m1 = m4.identity()
-  m4.translate(m1, obj1.position, m1)
-  m4.scale(m1, obj1.scaleV3, m1)
-  m4.transformPoint(m1, o1MinV3, o1MinV3)
-  m4.transformPoint(m1, o1MaxV3, o1MaxV3)
-
-  var m2 = m4.identity()
-  m4.translate(m2, obj2.position, m2)
-  m4.scale(m2, obj2.scaleV3, m2)
-  m4.transformPoint(m2, o2MinV3, o2MinV3)
-  m4.transformPoint(m2, o2MaxV3, o2MaxV3)
-
   return (
-    (o1MinV3[0] <= o2MaxV3[0] && o1MaxV3[0] >= o2MinV3[0])
+    (obj1.bbox2.min[0] <= obj2.bbox2.max[0] && obj1.bbox2.max[0] >= obj2.bbox2.min[0])
     &&
-    (o1MinV3[1] <= o2MaxV3[1] && o1MaxV3[1] >= o2MinV3[1])
+    (obj1.bbox2.min[1] <= obj2.bbox2.max[1] && obj1.bbox2.max[1] >= obj2.bbox2.min[1])
   )
 }
 
@@ -197,6 +179,65 @@ function updateShip(ship, gameState, t) {
   m4.rotateY(m, ship.rotateY, m)
   m4.rotateZ(m, ship.rotateZ, m)
   m4.scale(m, ship.scaleV3, m)
+
+  bbox2(ship)
+}
+
+function bbox2(go) {
+  // TODO try this method as well:
+  // https://github.com/mrdoob/three.js/issues/1561
+  /*
+  function unionBBox( b, p )
+{
+    var r = new Object();
+    r.min = b.min.clone();
+    r.max = b.max.clone();
+
+    r.min.x = Math.min( b.min.x, p.x );
+    r.min.y = Math.min( b.min.y, p.y );
+    r.min.z = Math.min( b.min.z, p.z );
+    r.max.x = Math.max( b.max.x, p.x );
+    r.max.y = Math.max( b.max.y, p.y );
+    r.max.z = Math.max( b.max.z, p.z );
+
+    return r;
+}
+
+
+function transformBBox(b, matrix)
+{
+    var ret = new Object();
+    ret.min = matrix.multiplyVector3(new THREE.Vector3(b.min.x, b.min.y, b.min.z));
+    ret.max = matrix.multiplyVector3(new THREE.Vector3(b.min.x, b.min.y, b.min.z));
+
+    ret = unionBBox(ret, matrix.multiplyVector3(new THREE.Vector3(b.max.x, b.min.y, b.min.z)));
+    ret = unionBBox(ret, matrix.multiplyVector3(new THREE.Vector3(b.min.x, b.max.y, b.min.z)));
+    ret = unionBBox(ret, matrix.multiplyVector3(new THREE.Vector3(b.min.x, b.min.y, b.max.z)));
+    ret = unionBBox(ret, matrix.multiplyVector3(new THREE.Vector3(b.min.x, b.max.y, b.max.z)));
+    ret = unionBBox(ret, matrix.multiplyVector3(new THREE.Vector3(b.max.x, b.max.y, b.min.z)));
+    ret = unionBBox(ret, matrix.multiplyVector3(new THREE.Vector3(b.max.x, b.min.y, b.max.z)));
+    ret = unionBBox(ret, matrix.multiplyVector3(new THREE.Vector3(b.max.x, b.max.y, b.max.z)));
+
+    return ret;
+}
+
+var bboxWorldSpace = transformBBox(mesh.geometry.boundingBox, mesh.matrixWorld);
+  */
+  var b = go.bbox2
+  m4.transformPoint(go.matrix, b.oTopLeft, b.topLeft)
+  m4.transformPoint(go.matrix, b.oTopRight, b.topRight)
+  m4.transformPoint(go.matrix, b.oBottomRight, b.bottomRight)
+  m4.transformPoint(go.matrix, b.oBottomLeft, b.bottomLeft)
+  var newMinX = Math.min(b.topLeft[0], b.topRight[0], b.bottomRight[0], b.bottomLeft[0])
+  var newMaxX = Math.max(b.topLeft[0], b.topRight[0], b.bottomRight[0], b.bottomLeft[0])
+  var newMinY = Math.min(b.topLeft[1], b.topRight[1], b.bottomRight[1], b.bottomLeft[1])
+  var newMaxY = Math.max(b.topLeft[1], b.topRight[1], b.bottomRight[1], b.bottomLeft[1])
+  setV3(b.topLeft, newMinX, newMaxY, go.bbox.z.min)
+  setV3(b.topRight, newMaxX, newMaxY, go.bbox.z.min)
+  setV3(b.bottomRight, newMaxX, newMinY, go.bbox.z.min)
+  setV3(b.bottomLeft, newMinX, newMinY, go.bbox.z.min)
+  setV3(b.min, newMinX, newMinY, go.bbox.z.min)
+  setV3(b.max, newMaxX, newMaxY, go.bbox.z.min)
 }
 
 function defaultUpdate(gObj, gameState, t) {
@@ -221,6 +262,8 @@ function defaultUpdate(gObj, gameState, t) {
   m4.rotateY(gObj.matrix, gObj.rotateY, gObj.matrix)
   m4.rotateZ(gObj.matrix, gObj.rotateZ, gObj.matrix)
   m4.scale(gObj.matrix, gObj.scaleV3, gObj.matrix)
+
+  bbox2(gObj)
 }
 
 function updateBullet(bullet, gameState, t) {
@@ -263,14 +306,26 @@ function initShip(position, shipData) {
 
   var box = bbox(shipData.modelData.vertices)
   ship.bbox = box
-  ship.width = ship.width = (box.x.max - box.x.min) * ship.scale
-  ship.height = ship.height = (box.y.max - box.y.min) * ship.scale
+  ship.width = (box.x.max - box.x.min) * ship.scale
+  ship.height = (box.y.max - box.y.min) * ship.scale
+  ship.bbox2 = {
+    oTopLeft: v3.create(box.x.min, box.y.max, box.z.min),
+    oTopRight: v3.create(box.x.max, box.y.max, box.z.min),
+    oBottomRight: v3.create(box.x.max, box.y.min, box.z.min),
+    oBottomLeft: v3.create(box.x.min, box.y.min, box.z.min),
+    topLeft: v3.create(box.x.min, box.y.max, box.z.min),
+    topRight: v3.create(box.x.max, box.y.max, box.z.min),
+    bottomRight: v3.create(box.x.max, box.y.min, box.z.min),
+    bottomLeft: v3.create(box.x.min, box.y.min, box.z.min),
+    min: v3.create(box.x.min, box.y.min, box.z.min),
+    max: v3.create(box.x.max, box.y.max, box.z.max)
+  }
   window.ship = ship
   return ship
 }
 
 function initAsteroid(screenSize, asteroidData) {
-  var asteroid = new GObject()
+  var asteroid = new GObject
   asteroid.type = gameTypes.asteroid
   asteroid.velocity[0] = rand() * .5 * (rand() > .5 ? -1 : 1)
   asteroid.velocity[1] = rand() * .5 * (rand() > .5 ? -1 : 1)
@@ -281,6 +336,18 @@ function initAsteroid(screenSize, asteroidData) {
   asteroid.bbox = box
   asteroid.width = (box.x.max - box.x.min) * asteroid.scale
   asteroid.height = (box.y.max - box.y.min) * asteroid.scale
+  asteroid.bbox2 = {
+    oTopLeft: v3.create(box.x.min, box.y.max, box.z.min),
+    oTopRight: v3.create(box.x.max, box.y.max, box.z.min),
+    oBottomRight: v3.create(box.x.max, box.y.min, box.z.min),
+    oBottomLeft: v3.create(box.x.min, box.y.min, box.z.min),
+    topLeft: v3.create(box.x.min, box.y.max, box.z.min),
+    topRight: v3.create(box.x.max, box.y.max, box.z.min),
+    bottomRight: v3.create(box.x.max, box.y.min, box.z.min),
+    bottomLeft: v3.create(box.x.min, box.y.min, box.z.min),
+    min: v3.create(box.x.min, box.y.min, box.z.min),
+    max: v3.create(box.x.max, box.y.max, box.z.max)
+  }
   asteroid.position = v3.create(
     lerp(rand(), 0, screenSize.w),
     lerp(rand(), 0, screenSize.h),
@@ -288,6 +355,7 @@ function initAsteroid(screenSize, asteroidData) {
   )
   // TODO padding around ship in center
   asteroid.rotateZ = 0//rand(Math.PI*2)
+  asteroid.rotateZ = Math.PI/6
   asteroid.bufferInfo = asteroidData.bufferInfo
   return asteroid
 }
@@ -361,6 +429,23 @@ function drawBbox(gl, programInfo, gameState, go) {
   gl.drawElements(gl.LINES, r.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
 }
 
+function drawBbox2(gl, programInfo, gameState, go) {
+  var w = (go.bbox2.max[0] - go.bbox2.min[0])
+  var h = (go.bbox2.max[1] - go.bbox2.min[1])
+  const r = makeRect(gl, w, h)
+  setV3(r.position,
+    Math.abs(go.bbox2.min[0]) + w/2,
+    Math.abs(go.bbox2.min[1]) + h/2,
+    go.position[2]
+  )
+  m4.identity(r.matrix)
+  m4.translate(r.matrix, r.position, r.matrix)
+  gameState.uniforms.u_model = r.matrix
+  twgl.setBuffersAndAttributes(gl, programInfo, r.bufferInfo)
+  twgl.setUniforms(programInfo, gameState.uniforms)
+  gl.drawElements(gl.LINES, r.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
+}
+
 function drawGameObject(gameObject, gameState, programInfo) {
   var gl = gameState.gl
   gameState.uniforms.u_model = gameObject.matrix
@@ -369,7 +454,7 @@ function drawGameObject(gameObject, gameState, programInfo) {
   twgl.setBuffersAndAttributes(gl, programInfo, gameObject.bufferInfo)
   twgl.setUniforms(programInfo, gameState.uniforms)
   gl.drawElements(gl.LINES, gameObject.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
-  drawBbox(gl, programInfo, gameState, gameObject)
+  drawBbox2(gl, programInfo, gameState, gameObject)
 }
 
 function main(modelsData) {
@@ -415,6 +500,13 @@ function main(modelsData) {
     )
     requestAnimationFrame(loop)
   }
+
+var button = document.createElement('button')
+button.innerText = ' hlleo'
+button.onclick = function() {
+  requestAnimationFrame(loop)
+}
+document.body.appendChild(button)
   requestAnimationFrame(loop)
 }
 
