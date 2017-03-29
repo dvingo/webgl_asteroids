@@ -105,34 +105,6 @@ export const keyNames = {
 
 export const validKeys = Object.keys(keyNames).map(i => keyNames[i])
 
-/**
- * Compute bounding box of vertex array.
- */
-export function bbox(vertices) {
-  var maxX, maxY, maxZ, minX, minY, minZ
-  minX = maxX = vertices[0]
-  minY = maxY = vertices[1]
-  minZ = maxZ = vertices[2]
-
-  for (var i = 3, len=vertices.length; i < len - 3;i+=3) {
-    var x = vertices[i], y = vertices[i+1], z = vertices[i+2]
-
-    if (x < minX) minX = x
-    else if (x > maxX) maxX = x
-
-    if (y < minY) minY = y
-    else if (y > maxY) maxY = y
-
-    if (z < minZ) minZ = z
-    else if (z > maxZ) maxZ = z
-  }
-
-  return {
-    x: {min: minX, max: maxX},
-    y: {min: minY, max: maxY},
-    z: {min: minZ, max: maxZ}
-  }
-}
 
 export const getJson = (endpoint, cb) => {
   const xhr = new XMLHttpRequest
@@ -288,8 +260,55 @@ export const wrapBounds = (gObj, canvas) => {
     gObj.position[1] = -gObj.height
 }
 
+/**
+ * Compute bounding box of vertex array.
+ */
+export function bbox(vertices) {
+  var maxX, maxY, maxZ, minX, minY, minZ
+  minX = maxX = vertices[0]
+  minY = maxY = vertices[1]
+  minZ = maxZ = vertices[2]
+
+  for (var i = 3, len=vertices.length; i < len - 3;i+=3) {
+    var x = vertices[i], y = vertices[i+1], z = vertices[i+2]
+
+    if (x < minX) minX = x
+    else if (x > maxX) maxX = x
+
+    if (y < minY) minY = y
+    else if (y > maxY) maxY = y
+
+    if (z < minZ) minZ = z
+    else if (z > maxZ) maxZ = z
+  }
+
+  return {
+    x: {min: minX, max: maxX},
+    y: {min: minY, max: maxY},
+    z: {min: minZ, max: maxZ}
+  }
+}
+
+export function setupBbox(gobj, vertices) {
+  var box = bbox(vertices)
+  gobj.width = (box.x.max - box.x.min) * gobj.scale
+  gobj.height = (box.y.max - box.y.min) * gobj.scale
+  gobj.bbox = {
+    oTopLeft: v3.create(box.x.min, box.y.max, box.z.min),
+    oTopRight: v3.create(box.x.max, box.y.max, box.z.min),
+    oBottomRight: v3.create(box.x.max, box.y.min, box.z.min),
+    oBottomLeft: v3.create(box.x.min, box.y.min, box.z.min),
+    topLeft: v3.create(box.x.min, box.y.max, box.z.min),
+    topRight: v3.create(box.x.max, box.y.max, box.z.min),
+    bottomRight: v3.create(box.x.max, box.y.min, box.z.min),
+    bottomLeft: v3.create(box.x.min, box.y.min, box.z.min),
+    min: v3.create(box.x.min, box.y.min, box.z.min),
+    max: v3.create(box.x.max, box.y.max, box.z.max)
+  }
+}
+
 export function updateBbox(go) {
-  var b = go.bbox2
+  var b = go.bbox
   m4.transformPoint(go.matrix, b.oTopLeft, b.topLeft)
   m4.transformPoint(go.matrix, b.oTopRight, b.topRight)
   m4.transformPoint(go.matrix, b.oBottomRight, b.bottomRight)
@@ -298,12 +317,12 @@ export function updateBbox(go) {
   var newMaxX = Math.max(b.topLeft[0], b.topRight[0], b.bottomRight[0], b.bottomLeft[0])
   var newMinY = Math.min(b.topLeft[1], b.topRight[1], b.bottomRight[1], b.bottomLeft[1])
   var newMaxY = Math.max(b.topLeft[1], b.topRight[1], b.bottomRight[1], b.bottomLeft[1])
-  setV3(b.topLeft, newMinX, newMaxY, go.bbox.z.min)
-  setV3(b.topRight, newMaxX, newMaxY, go.bbox.z.min)
-  setV3(b.bottomRight, newMaxX, newMinY, go.bbox.z.min)
-  setV3(b.bottomLeft, newMinX, newMinY, go.bbox.z.min)
-  setV3(b.min, newMinX, newMinY, go.bbox.z.min)
-  setV3(b.max, newMaxX, newMaxY, go.bbox.z.min)
+  setV3(b.topLeft, newMinX, newMaxY, 1)
+  setV3(b.topRight, newMaxX, newMaxY, 1)
+  setV3(b.bottomRight, newMaxX, newMinY, 1)
+  setV3(b.bottomLeft, newMinX, newMinY, 1)
+  setV3(b.min, newMinX, newMinY, 1)
+  setV3(b.max, newMaxX, newMaxY, 1)
 }
 
 export function setupModelBuffer(gl, data) {
@@ -322,9 +341,9 @@ export function setupModelBuffer(gl, data) {
  */
 export function intersects(obj1, obj2) {
   return (
-    (obj1.bbox2.min[0] <= obj2.bbox2.max[0] && obj1.bbox2.max[0] >= obj2.bbox2.min[0])
+    (obj1.bbox.min[0] <= obj2.bbox.max[0] && obj1.bbox.max[0] >= obj2.bbox.min[0])
     &&
-    (obj1.bbox2.min[1] <= obj2.bbox2.max[1] && obj1.bbox2.max[1] >= obj2.bbox2.min[1])
+    (obj1.bbox.min[1] <= obj2.bbox.max[1] && obj1.bbox.max[1] >= obj2.bbox.min[1])
   )
 }
 
@@ -354,4 +373,14 @@ export function makeRect(gl, w, h) {
   var g = new GObject
   g.bufferInfo = createRectanglurPrizm(gl, w, h)
   return g
+}
+
+export function updateGObjectMatrix(gobj) {
+  var m = gobj.matrix
+  m4.identity(m)
+  m4.translate(m, gobj.position, m)
+  m4.rotateX(m, gobj.rotateX, m)
+  m4.rotateY(m, gobj.rotateY, m)
+  m4.rotateZ(m, gobj.rotateZ, m)
+  m4.scale(m, gobj.scaleV3, m)
 }

@@ -4,7 +4,8 @@ import {
   awaitAll, bbox, updateBbox, partial, throttle, rand, randInt, objFromStrs,
   createCanvas, validKeys, keyNames, getJson, lerp, range, findIndex, getTime,
   makePool, makeRect, getV3Angle, setV3Angle, setV3Length, setV3,
-  log, wrapBounds, setupModelBuffer, intersects, GObject
+  log, wrapBounds, setupModelBuffer, intersects, GObject, setupBbox,
+  updateGObjectMatrix
 } from './util'
 const { m4, v3 } = twgl
 window.twgl = twgl
@@ -46,9 +47,8 @@ const gameState = {
     drawBboxes: false
   }
 }
-window.gameState = gameState
-
 var gameTypes = objFromStrs('ship', 'asteroid', 'bullet')
+window.gameState = gameState
 
 function makeBullet(gl, ship, bulletData, bulletPool) {
   var bullet = bulletPool.get()
@@ -58,8 +58,7 @@ function makeBullet(gl, ship, bulletData, bulletPool) {
   setV3Length(bullet.velocity, v3.length(ship.velocity) + gameState.bulletSpeed)
   setV3Angle(bullet.velocity, ship.rotateZ)
   bullet.bufferInfo = bulletData.bufferInfo
-  bullet.bbox = bulletData.bbox
-  bullet.bboxV3 = vec3.create()
+  setupBbox(bullet, bulletData.vertices)
   bullet.position = v3.copy(ship.position)
   return bullet
 }
@@ -109,37 +108,31 @@ function updateShip(ship, gameState, t) {
     }
   })
 
-  var m = ship.matrix
-  m4.identity(m)
-  m4.translate(m, ship.position, m)
-  m4.rotateX(m, ship.rotateX, m)
-  m4.rotateY(m, ship.rotateY, m)
-  m4.rotateZ(m, ship.rotateZ, m)
-  m4.scale(m, ship.scaleV3, m)
-
+  updateGObjectMatrix(ship)
   updateBbox(ship)
 }
 
 function defaultUpdate(gObj, gameState, t) {
   var gl = gameState.gl
   v3.add(gObj.position, gObj.velocity, gObj.position)
-
   wrapBounds(gObj, gl.canvas)
-
-  m4.identity(gObj.matrix)
-  m4.translate(gObj.matrix, gObj.position, gObj.matrix)
-  m4.rotateX(gObj.matrix, gObj.rotateX, gObj.matrix)
-  m4.rotateY(gObj.matrix, gObj.rotateY, gObj.matrix)
-  m4.rotateZ(gObj.matrix, gObj.rotateZ, gObj.matrix)
-  m4.scale(gObj.matrix, gObj.scaleV3, gObj.matrix)
-
+  updateGObjectMatrix(gObj)
   updateBbox(gObj)
 }
 
 function updateBullet(bullet, gameState, t) {
-  if (getTime() - bullet.createdTime > gameState.bulletLifetimeMs)
+  if (getTime() - bullet.createdTime > gameState.bulletLifetimeMs) {
     bullet.shouldRemove = true
-  defaultUpdate(bullet, gameState, t)
+  } else {
+    gameState.objects.forEach(obj => {
+      if (obj.type === gameTypes.bullet || obj.type === gameTypes.ship) return
+      if (intersects(obj, bullet)) {
+        setV3(bullet.color, 1, 0, 0)
+        setV3(obj.color, 1, 0, 0)
+      }
+    })
+    defaultUpdate(bullet, gameState, t)
+  }
 }
 
 var objTypeToUpdateFn = {}
@@ -160,23 +153,7 @@ function initShip(position, shipData) {
   // ship.rotateY= Math.PI/2
   ship.type = gameTypes.ship
   ship.bufferInfo = shipData.bufferInfo
-
-  var box = bbox(shipData.modelData.vertices)
-  ship.bbox = box
-  ship.width = (box.x.max - box.x.min) * ship.scale
-  ship.height = (box.y.max - box.y.min) * ship.scale
-  ship.bbox2 = {
-    oTopLeft: v3.create(box.x.min, box.y.max, box.z.min),
-    oTopRight: v3.create(box.x.max, box.y.max, box.z.min),
-    oBottomRight: v3.create(box.x.max, box.y.min, box.z.min),
-    oBottomLeft: v3.create(box.x.min, box.y.min, box.z.min),
-    topLeft: v3.create(box.x.min, box.y.max, box.z.min),
-    topRight: v3.create(box.x.max, box.y.max, box.z.min),
-    bottomRight: v3.create(box.x.max, box.y.min, box.z.min),
-    bottomLeft: v3.create(box.x.min, box.y.min, box.z.min),
-    min: v3.create(box.x.min, box.y.min, box.z.min),
-    max: v3.create(box.x.max, box.y.max, box.z.max)
-  }
+  setupBbox(ship, shipData.modelData.vertices)
   window.ship = ship
   return ship
 }
@@ -186,29 +163,12 @@ function initAsteroid(screenSize, asteroidData) {
   asteroid.type = gameTypes.asteroid
   asteroid.velocity[0] = rand() * .5 * (rand() > .5 ? -1 : 1)
   asteroid.velocity[1] = rand() * .5 * (rand() > .5 ? -1 : 1)
+  // For debugging:
   setV3(asteroid.velocity, 0,0,0)
   asteroid.rotateZ = rand(Math.PI*2)
   asteroid.scale = 4
   asteroid.scaleV3 = v3.create(asteroid.scale, asteroid.scale, asteroid.scale)
-  // TODO move bbox into utils.
-  // Also need to transform bbox2 points as they are transformed in `update`
-  // so the first render is in the proper coordinate system.
-  var box = bbox(asteroidData.modelData.vertices)
-  asteroid.bbox = box
-  asteroid.width = (box.x.max - box.x.min) * asteroid.scale
-  asteroid.height = (box.y.max - box.y.min) * asteroid.scale
-  asteroid.bbox2 = {
-    oTopLeft: v3.create(box.x.min, box.y.max, box.z.min),
-    oTopRight: v3.create(box.x.max, box.y.max, box.z.min),
-    oBottomRight: v3.create(box.x.max, box.y.min, box.z.min),
-    oBottomLeft: v3.create(box.x.min, box.y.min, box.z.min),
-    topLeft: v3.create(box.x.min, box.y.max, box.z.min),
-    topRight: v3.create(box.x.max, box.y.max, box.z.min),
-    bottomRight: v3.create(box.x.max, box.y.min, box.z.min),
-    bottomLeft: v3.create(box.x.min, box.y.min, box.z.min),
-    min: v3.create(box.x.min, box.y.min, box.z.min),
-    max: v3.create(box.x.max, box.y.max, box.z.max)
-  }
+  setupBbox(asteroid, asteroidData.modelData.vertices)
   asteroid.position = v3.create(
     lerp(rand(), 0, screenSize.w),
     lerp(rand(), 0, screenSize.h),
@@ -237,25 +197,25 @@ window.on('keydown', ({keyCode}) => {
   if (keyCode == keyNames.left) gameState.keys.leftPressed = true
   if (keyCode == keyNames.right) gameState.keys.rightPressed = true
   if (keyCode == keyNames.space) gameState.keys.spacePressed = true
+  if (keyCode == keyNames.ctrl) gameState.config.drawBboxes = !gameState.config.drawBboxes
 })
 
 function setupGameObjects(gameState, modelsData) {
   var gl = gameState.gl
+
   var shipBufferInfo = setupModelBuffer(gl, modelsData[0])
   gameState.shipData = {bufferInfo: shipBufferInfo, modelData: modelsData[0]}
-
-  var bulletVertices = twgl.primitives.createCubeVertices(gameState.bulletSize)
-  window.bulletVertices = bulletVertices.position
-
-  gameState.bulletData = {
-    bufferInfo: twgl.primitives.createCubeBufferInfo(gl, gameState.bulletSize),
-    bbox: bbox(twgl.primitives.createCubeVertices(gameState.bulletSize).position)
-  }
-  window.modelsData = modelsData
-  var asteroidBufferInfo = setupModelBuffer(gl, modelsData[1])
-  gameState.asteroidData = {bufferInfo: asteroidBufferInfo, modelData: modelsData[1]}
   var center = v3.create(gl.canvas.clientWidth / 2, gl.canvas.clientHeight / 2, 0)
   gameState.objects.push(initShip(center, gameState.shipData))
+
+  var bulletVertices = twgl.primitives.createCubeVertices(gameState.bulletSize)
+  gameState.bulletData = {
+    bufferInfo: twgl.primitives.createCubeBufferInfo(gl, gameState.bulletSize),
+    vertices: twgl.primitives.createCubeVertices(gameState.bulletSize).position
+  }
+
+  var asteroidBufferInfo = setupModelBuffer(gl, modelsData[1])
+  gameState.asteroidData = {bufferInfo: asteroidBufferInfo, modelData: modelsData[1]}
 
   var screenSize = {
     w:gl.canvas.clientWidth, h: gl.canvas.clientHeight
@@ -266,12 +226,12 @@ function setupGameObjects(gameState, modelsData) {
 }
 
 function drawBbox(gl, programInfo, gameState, go) {
-  var w = (go.bbox2.max[0] - go.bbox2.min[0])
-  var h = (go.bbox2.max[1] - go.bbox2.min[1])
+  var w = (go.bbox.max[0] - go.bbox.min[0])
+  var h = (go.bbox.max[1] - go.bbox.min[1])
   const r = makeRect(gl, w, h)
   setV3(r.position,
-    Math.abs(go.bbox2.min[0]) + w/2,
-    Math.abs(go.bbox2.min[1]) + h/2,
+    Math.abs(go.bbox.min[0]) + w/2,
+    Math.abs(go.bbox.min[1]) + h/2,
     go.position[2]
   )
   m4.identity(r.matrix)
@@ -289,7 +249,7 @@ function drawGameObject(gameObject, gameState, programInfo) {
   gl.useProgram(programInfo.program)
   twgl.setBuffersAndAttributes(gl, programInfo, gameObject.bufferInfo)
   twgl.setUniforms(programInfo, gameState.uniforms)
-  gl.drawElements(gl.LINES, gameObject.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
+  gl.drawElements(gl.TRIANGLES, gameObject.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
   gameState.config.drawBboxes && drawBbox(gl, programInfo, gameState, gameObject)
 }
 
