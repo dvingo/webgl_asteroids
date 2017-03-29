@@ -294,6 +294,7 @@ export function setupBbox(gobj, vertices) {
   gobj.width = (box.x.max - box.x.min) * gobj.scale
   gobj.height = (box.y.max - box.y.min) * gobj.scale
   gobj.bbox = {
+    startBox: box,
     oTopLeft: v3.create(box.x.min, box.y.max, box.z.min),
     oTopRight: v3.create(box.x.max, box.y.max, box.z.min),
     oBottomRight: v3.create(box.x.max, box.y.min, box.z.min),
@@ -305,10 +306,14 @@ export function setupBbox(gobj, vertices) {
     min: v3.create(box.x.min, box.y.min, box.z.min),
     max: v3.create(box.x.max, box.y.max, box.z.max)
   }
+  updateBbox(gobj)
 }
 
 export function updateBbox(go) {
   var b = go.bbox
+  var box = go.bbox.startBox
+  go.width = (box.x.max - box.x.min) * go.scale
+  go.height = (box.y.max - box.y.min) * go.scale
   m4.transformPoint(go.matrix, b.oTopLeft, b.topLeft)
   m4.transformPoint(go.matrix, b.oTopRight, b.topRight)
   m4.transformPoint(go.matrix, b.oBottomRight, b.bottomRight)

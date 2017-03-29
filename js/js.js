@@ -16,7 +16,13 @@ EventTarget.prototype.on = function(){this.addEventListener.apply(this,arguments
 function bulletMaker() { return new GObject }
 
 const gameState = {
-  thrust: .03,
+  // TODO lerp this see coding math for high to low lerp
+  //    on low scale factor (like .5) we want low thrust (.001 here)
+  //
+  // allow scale factors between .5 and 4 in this example and map that
+  // to a thrust amount.
+  //scaleFactor => across(.5, 4, .001, .03)
+  thrust: scaleFactor => .03,
   maxVelocity: 10,
   rotateBy: Math.PI/80,
   numAsteroids: 10,
@@ -43,12 +49,11 @@ const gameState = {
     u_model: m4.identity(),
     color: v3.create(.8, .8, .8)
   },
-  drawBboxes: false
+  drawBboxes: false,
+  globalScaleFactor: 3
 }
 var gameTypes = objFromStrs('ship', 'asteroid', 'bullet')
 window.gameState = gameState
-
-
 
 const throttledMakeBullet = throttle(function() {
   gameState.objects.push(makeBullet(
@@ -95,6 +100,7 @@ function updateShip(ship, gameState, t) {
     }
   })
 
+  scaleObj(ship, gameState.globalScaleFactor)
   updateGObjectMatrix(ship)
   updateBbox(ship)
 }
@@ -103,6 +109,7 @@ function defaultUpdate(gObj, gameState, t) {
   var gl = gameState.gl
   v3.add(gObj.position, gObj.velocity, gObj.position)
   wrapBounds(gObj, gl.canvas)
+  scaleObj(gObj, gameState.globalScaleFactor)
   updateGObjectMatrix(gObj)
   updateBbox(gObj)
 }
@@ -112,8 +119,9 @@ function updateBullet(bullet, gameState, t) {
     bullet.shouldRemove = true
   } else {
     gameState.objects.forEach(obj => {
-      if (obj.type === gameTypes.bullet || obj.type === gameTypes.ship) return
-      if (intersects(obj, bullet)) {
+      if (obj.type === gameTypes.asteroid && intersects(obj, bullet)) {
+        // TODO at this point make 4 new smaller asteroids, set their
+        // velocity based on obj and then set obj.shouldRemove = true
         setV3(bullet.color, 1, 0, 0)
         setV3(obj.color, 1, 0, 0)
       }
@@ -130,39 +138,46 @@ function update(gObject, gameState, t) {
   (objTypeToUpdateFn[gObject.type] || defaultUpdate)(gObject, gameState, t)
 }
 
+const scaleObj = (gobj, scaleFactor) =>
+  v3.mulScalar(gobj.originalScaleV3, scaleFactor, gobj.scaleV3)
+
 function initShip(position, shipData) {
   var ship = new GObject
-  setV3Length(ship.acceleration, gameState.thrust)
-  ship.position = position
-  ship.scale = 2
-  ship.scaleV3 = v3.create(ship.scale, ship.scale, ship.scale)
-  // ship.rotateX= Math.PI/2
-  // ship.rotateY= Math.PI/2
+  setV3Length(ship.acceleration, gameState.thrust(gameState.globalScaleFactor))
   ship.type = gameTypes.ship
   ship.bufferInfo = shipData.bufferInfo
+  ship.position = position
+  ship.scale = 2
+  ship.originalScaleV3 = v3.create(ship.scale, ship.scale, ship.scale)
+  ship.scaleV3 = v3.create(ship.scale, ship.scale, ship.scale)
+  scaleObj(ship, gameState.globalScaleFactor)
+  // ship.rotateX= Math.PI/2
+  // ship.rotateY= Math.PI/2
+  updateGObjectMatrix(ship)
   setupBbox(ship, shipData.modelData.vertices)
-  window.ship = ship
   return ship
 }
 
-function initAsteroid(screenSize, asteroidData) {
+function initAsteroid(screenSize, asteroidData, ship) {
   var asteroid = new GObject
   asteroid.type = gameTypes.asteroid
   asteroid.velocity[0] = rand() * .5 * (rand() > .5 ? -1 : 1)
   asteroid.velocity[1] = rand() * .5 * (rand() > .5 ? -1 : 1)
-  // For debugging:
-  setV3(asteroid.velocity, 0,0,0)
   asteroid.rotateZ = rand(Math.PI*2)
   asteroid.scale = 4
+  asteroid.originalScaleV3 = v3.create(asteroid.scale, asteroid.scale, asteroid.scale)
   asteroid.scaleV3 = v3.create(asteroid.scale, asteroid.scale, asteroid.scale)
-  setupBbox(asteroid, asteroidData.modelData.vertices)
-  asteroid.position = v3.create(
-    lerp(rand(), 0, screenSize.w),
-    lerp(rand(), 0, screenSize.h),
-    0
-  )
-  // TODO padding around ship in center
+  scaleObj(asteroid, gameState.globalScaleFactor)
   asteroid.bufferInfo = asteroidData.bufferInfo
+  updateGObjectMatrix(asteroid)
+  setupBbox(asteroid, asteroidData.modelData.vertices)
+  do {
+    asteroid.position = v3.create(
+      lerp(rand(), 0, screenSize.w),
+      lerp(rand(), 0, screenSize.h),
+      0
+    )
+  } while (intersects(ship, asteroid))
   return asteroid
 }
 
@@ -171,9 +186,12 @@ function makeBullet(gl, ship, bulletData, bulletPool) {
   bullet.createdTime = getTime()
   bullet.shouldRemove = false
   bullet.type = gameTypes.bullet
+  bullet.bufferInfo = bulletData.bufferInfo
+  bullet.originalScaleV3 = v3.create(1, 1, 1)
+  scaleObj(bullet, gameState.globalScaleFactor)
   setV3Length(bullet.velocity, v3.length(ship.velocity) + gameState.bulletSpeed)
   setV3Angle(bullet.velocity, ship.rotateZ)
-  bullet.bufferInfo = bulletData.bufferInfo
+  updateGObjectMatrix(bullet)
   setupBbox(bullet, bulletData.vertices)
   bullet.position = v3.create(
     ship.position[0] + Math.cos(ship.rotateZ) * ship.width / 4,
@@ -225,7 +243,7 @@ function setupGameObjects(gameState, modelsData) {
     w:gl.canvas.clientWidth, h: gl.canvas.clientHeight
   }
   for (var i = 0; i < gameState.numAsteroids; i++) {
-    gameState.objects.push(initAsteroid(screenSize, gameState.asteroidData))
+    gameState.objects.push(initAsteroid(screenSize, gameState.asteroidData, gameState.getShip()))
   }
 }
 
