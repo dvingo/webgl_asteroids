@@ -19,7 +19,7 @@ const gameState = {
   thrust: .03,
   maxVelocity: 10,
   rotateBy: Math.PI/80,
-  numAsteroids: 1,
+  numAsteroids: 10,
   keys: {
     ctrlPressed: false,
     leftPressed: false,
@@ -43,25 +43,12 @@ const gameState = {
     u_model: m4.identity(),
     color: v3.create(.8, .8, .8)
   },
-  config: {
-    drawBboxes: false
-  }
+  drawBboxes: false
 }
 var gameTypes = objFromStrs('ship', 'asteroid', 'bullet')
 window.gameState = gameState
 
-function makeBullet(gl, ship, bulletData, bulletPool) {
-  var bullet = bulletPool.get()
-  bullet.createdTime = getTime()
-  bullet.shouldRemove = false
-  bullet.type = gameTypes.bullet
-  setV3Length(bullet.velocity, v3.length(ship.velocity) + gameState.bulletSpeed)
-  setV3Angle(bullet.velocity, ship.rotateZ)
-  bullet.bufferInfo = bulletData.bufferInfo
-  setupBbox(bullet, bulletData.vertices)
-  bullet.position = v3.copy(ship.position)
-  return bullet
-}
+
 
 const throttledMakeBullet = throttle(function() {
   gameState.objects.push(makeBullet(
@@ -179,6 +166,23 @@ function initAsteroid(screenSize, asteroidData) {
   return asteroid
 }
 
+function makeBullet(gl, ship, bulletData, bulletPool) {
+  var bullet = bulletPool.get()
+  bullet.createdTime = getTime()
+  bullet.shouldRemove = false
+  bullet.type = gameTypes.bullet
+  setV3Length(bullet.velocity, v3.length(ship.velocity) + gameState.bulletSpeed)
+  setV3Angle(bullet.velocity, ship.rotateZ)
+  bullet.bufferInfo = bulletData.bufferInfo
+  setupBbox(bullet, bulletData.vertices)
+  bullet.position = v3.create(
+    ship.position[0] + Math.cos(ship.rotateZ) * ship.width / 4,
+    ship.position[1] + Math.sin(ship.rotateZ) * ship.height / 4,
+    ship.position[2]
+  )
+  return bullet
+}
+
 window.on('keyup', ({keyCode}) => {
   console.log('keyup', keyCode);
   if (keyCode == keyNames.up) gameState.keys.upPressed = false
@@ -197,7 +201,7 @@ window.on('keydown', ({keyCode}) => {
   if (keyCode == keyNames.left) gameState.keys.leftPressed = true
   if (keyCode == keyNames.right) gameState.keys.rightPressed = true
   if (keyCode == keyNames.space) gameState.keys.spacePressed = true
-  if (keyCode == keyNames.ctrl) gameState.config.drawBboxes = !gameState.config.drawBboxes
+  if (keyCode == keyNames.ctrl) gameState.drawBboxes = !gameState.drawBboxes
 })
 
 function setupGameObjects(gameState, modelsData) {
@@ -250,7 +254,7 @@ function drawGameObject(gameObject, gameState, programInfo) {
   twgl.setBuffersAndAttributes(gl, programInfo, gameObject.bufferInfo)
   twgl.setUniforms(programInfo, gameState.uniforms)
   gl.drawElements(gl.TRIANGLES, gameObject.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
-  gameState.config.drawBboxes && drawBbox(gl, programInfo, gameState, gameObject)
+  gameState.drawBboxes && drawBbox(gl, programInfo, gameState, gameObject)
 }
 
 function main(modelsData) {
