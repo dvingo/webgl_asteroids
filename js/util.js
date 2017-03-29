@@ -1,3 +1,4 @@
+import parseModel from './parseJson'
 const createEl = document.createElement.bind(document)
 
 export function makePool(constructor, count) {
@@ -67,6 +68,8 @@ export var throttle = (fn, timeMs) => {
     }
   }
 }
+
+export const log = throttle((...args) => console.log.apply(console, args), 1000)
 
 export function rand(n, m) {
   n = n || 1
@@ -252,4 +255,103 @@ export function createRectanglurPrizm(gl, width, height) {
     indices: indices
   })
   return bi
+}
+
+export const pV3 = v => v[0] + ', ' + v[1] + ', ' + v[2]
+export const setV3 = (v, x,y,z) => (v[0]=x,v[1]=y,v[2]=z)
+
+export const getV3Angle = v => Math.atan2(v[1], v[0])
+
+export const setV3Length = (v, length) => {
+  var angle = getV3Angle(v)
+  v[0] = Math.cos(angle) * length
+  v[1] = Math.sin(angle) * length
+}
+
+export const setV3Angle = (v, a) => {
+  const len = v3.length(v)
+  v[0] = Math.cos(a) * len
+  v[1] = Math.sin(a) * len
+}
+
+export const wrapBounds = (gObj, canvas) => {
+  if (gObj.position[0] + gObj.width < 0)
+    gObj.position[0] = canvas.clientWidth + gObj.width
+
+  if (gObj.position[0] > canvas.clientWidth + gObj.width)
+    gObj.position[0] = -gObj.width
+
+  if (gObj.position[1] + gObj.height < 0)
+    gObj.position[1] = canvas.clientHeight + gObj.height
+
+  if (gObj.position[1] > canvas.clientHeight + gObj.height)
+    gObj.position[1] = -gObj.height
+}
+
+export function updateBbox(go) {
+  var b = go.bbox2
+  m4.transformPoint(go.matrix, b.oTopLeft, b.topLeft)
+  m4.transformPoint(go.matrix, b.oTopRight, b.topRight)
+  m4.transformPoint(go.matrix, b.oBottomRight, b.bottomRight)
+  m4.transformPoint(go.matrix, b.oBottomLeft, b.bottomLeft)
+  var newMinX = Math.min(b.topLeft[0], b.topRight[0], b.bottomRight[0], b.bottomLeft[0])
+  var newMaxX = Math.max(b.topLeft[0], b.topRight[0], b.bottomRight[0], b.bottomLeft[0])
+  var newMinY = Math.min(b.topLeft[1], b.topRight[1], b.bottomRight[1], b.bottomLeft[1])
+  var newMaxY = Math.max(b.topLeft[1], b.topRight[1], b.bottomRight[1], b.bottomLeft[1])
+  setV3(b.topLeft, newMinX, newMaxY, go.bbox.z.min)
+  setV3(b.topRight, newMaxX, newMaxY, go.bbox.z.min)
+  setV3(b.bottomRight, newMaxX, newMinY, go.bbox.z.min)
+  setV3(b.bottomLeft, newMinX, newMinY, go.bbox.z.min)
+  setV3(b.min, newMinX, newMinY, go.bbox.z.min)
+  setV3(b.max, newMaxX, newMaxY, go.bbox.z.min)
+}
+
+export function setupModelBuffer(gl, data) {
+  var faceData = parseModel.parseJson(data)
+  var indices = parseModel.getIndicesFromFaces(faceData)
+  var arrays = {
+    position: {numComponents: 3, data: data.vertices},
+    indices: {numComponents: 3, data: indices}
+  }
+  return twgl.createBufferInfoFromArrays(gl, arrays)
+}
+
+/**
+ * @param {GObject} obj1
+ * @param {GObject} obj2
+ */
+export function intersects(obj1, obj2) {
+  return (
+    (obj1.bbox2.min[0] <= obj2.bbox2.max[0] && obj1.bbox2.max[0] >= obj2.bbox2.min[0])
+    &&
+    (obj1.bbox2.min[1] <= obj2.bbox2.max[1] && obj1.bbox2.max[1] >= obj2.bbox2.min[1])
+  )
+}
+
+/**
+ * Game object.
+ */
+export function GObject() {
+  this.position = v3.create(0,0,0)
+  this.scale = 1
+  this.scaleV3 = v3.create(1, 1, 1)
+  this.velocity = v3.create(0, 0, 0)
+  this.acceleration = v3.create(0, 0, 0)
+  this.rotateY = 0
+  this.rotateX= 0
+  this.rotateZ= 0
+  this.matrix = m4.identity()
+  this.width = 0
+  this.height = 0
+  this.type = ''
+  this.bufferInfo = null
+  this.color = v3.create(.8, .8, .8)
+  this.createdTime = getTime()
+  this.shouldRemove = false
+}
+
+export function makeRect(gl, w, h) {
+  var g = new GObject
+  g.bufferInfo = createRectanglurPrizm(gl, w, h)
+  return g
 }

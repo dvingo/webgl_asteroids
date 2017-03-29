@@ -1,10 +1,10 @@
 import twgl from 'twgl.js'
 import chroma from 'chroma-js'
-import parseModel from './parseJson'
 import {
-  awaitAll, bbox, partial, throttle, rand, randInt, objFromStrs,
+  awaitAll, bbox, updateBbox, partial, throttle, rand, randInt, objFromStrs,
   createCanvas, validKeys, keyNames, getJson, lerp, range, findIndex, getTime,
-  makePool, createRectanglurPrizm
+  makePool, makeRect, getV3Angle, setV3Angle, setV3Length, setV3,
+  log, wrapBounds, setupModelBuffer, intersects, GObject
 } from './util'
 const { m4, v3 } = twgl
 window.twgl = twgl
@@ -41,46 +41,14 @@ const gameState = {
     u_viewProjection: m4.identity(),
     u_model: m4.identity(),
     color: v3.create(.8, .8, .8)
+  },
+  config: {
+    drawBboxes: false
   }
 }
 window.gameState = gameState
 
 var gameTypes = objFromStrs('ship', 'asteroid', 'bullet')
-/**
- * Game object.
- */
-function GObject() {
-  this.position = v3.create(0,0,0)
-  this.scale = 1
-  this.scaleV3 = v3.create(1, 1, 1)
-  this.velocity = v3.create(0, 0, 0)
-  this.acceleration = v3.create(0, 0, 0)
-  this.rotateY = 0
-  this.rotateX= 0
-  this.rotateZ= 0
-  this.matrix = m4.identity()
-  this.width = 0
-  this.height = 0
-  this.type = ''
-  this.bufferInfo = null
-  this.color = v3.create(.8, .8, .8)
-  this.createdTime = getTime()
-  this.shouldRemove = false
-}
-
-const getV3Angle = v => Math.atan2(v[1], v[0])
-
-const setV3Length = (v, length) => {
-  var angle = getV3Angle(v)
-  v[0] = Math.cos(angle) * length
-  v[1] = Math.sin(angle) * length
-}
-
-const setV3Angle = (v, a) => {
-  const len = v3.length(v)
-  v[0] = Math.cos(a) * len
-  v[1] = Math.sin(a) * len
-}
 
 function makeBullet(gl, ship, bulletData, bulletPool) {
   var bullet = bulletPool.get()
@@ -96,12 +64,6 @@ function makeBullet(gl, ship, bulletData, bulletPool) {
   return bullet
 }
 
-function makeRect(gl, w, h) {
-  var g = new GObject
-  g.bufferInfo = createRectanglurPrizm(gl, w, h)
-  return g
-}
-
 const throttledMakeBullet = throttle(function() {
   gameState.objects.push(makeBullet(
     gameState.gl, gameState.getShip(), gameState.bulletData, gameState.bulletPool
@@ -112,21 +74,6 @@ function isAccelerating(gameState) {
   return gameState.keys.upPressed ||
          gameState.keys.downPressed
 }
-
-/**
- * @param {GObject} obj1
- * @param {GObject} obj2
- */
-function intersects(obj1, obj2) {
-  return (
-    (obj1.bbox2.min[0] <= obj2.bbox2.max[0] && obj1.bbox2.max[0] >= obj2.bbox2.min[0])
-    &&
-    (obj1.bbox2.min[1] <= obj2.bbox2.max[1] && obj1.bbox2.max[1] >= obj2.bbox2.min[1])
-  )
-}
-
-const pV3 = v => v[0] + ', ' + v[1] + ', ' + v[2]
-const setV3 = (v, x,y,z) => (v[0]=x,v[1]=y,v[2]=z)
 
 function updateShip(ship, gameState, t) {
   var gl = gameState.gl
@@ -148,18 +95,8 @@ function updateShip(ship, gameState, t) {
     setV3Length(ship.velocity, gameState.maxVelocity)
 
   v3.add(ship.position, ship.velocity, ship.position)
-  // Wrap the ship around the screen.
-  if (ship.position[0] + ship.width < 0)
-    ship.position[0] = gl.canvas.clientWidth + ship.width
 
-  if (ship.position[0] > gl.canvas.clientWidth + ship.width)
-    ship.position[0] = 0
-
-  if (ship.position[1] + ship.width < 0)
-    ship.position[1] = gl.canvas.clientHeight + ship.width
-
-  if (ship.position[1] > gl.canvas.clientHeight + ship.width)
-    ship.position[1] = 0
+  wrapBounds(ship, gl.canvas)
 
   if (gameState.keys.spacePressed) throttledMakeBullet()
 
@@ -180,42 +117,14 @@ function updateShip(ship, gameState, t) {
   m4.rotateZ(m, ship.rotateZ, m)
   m4.scale(m, ship.scaleV3, m)
 
-  bbox2(ship)
-}
-
-function bbox2(go) {
-  var b = go.bbox2
-  m4.transformPoint(go.matrix, b.oTopLeft, b.topLeft)
-  m4.transformPoint(go.matrix, b.oTopRight, b.topRight)
-  m4.transformPoint(go.matrix, b.oBottomRight, b.bottomRight)
-  m4.transformPoint(go.matrix, b.oBottomLeft, b.bottomLeft)
-  var newMinX = Math.min(b.topLeft[0], b.topRight[0], b.bottomRight[0], b.bottomLeft[0])
-  var newMaxX = Math.max(b.topLeft[0], b.topRight[0], b.bottomRight[0], b.bottomLeft[0])
-  var newMinY = Math.min(b.topLeft[1], b.topRight[1], b.bottomRight[1], b.bottomLeft[1])
-  var newMaxY = Math.max(b.topLeft[1], b.topRight[1], b.bottomRight[1], b.bottomLeft[1])
-  setV3(b.topLeft, newMinX, newMaxY, go.bbox.z.min)
-  setV3(b.topRight, newMaxX, newMaxY, go.bbox.z.min)
-  setV3(b.bottomRight, newMaxX, newMinY, go.bbox.z.min)
-  setV3(b.bottomLeft, newMinX, newMinY, go.bbox.z.min)
-  setV3(b.min, newMinX, newMinY, go.bbox.z.min)
-  setV3(b.max, newMaxX, newMaxY, go.bbox.z.min)
+  updateBbox(ship)
 }
 
 function defaultUpdate(gObj, gameState, t) {
   var gl = gameState.gl
   v3.add(gObj.position, gObj.velocity, gObj.position)
 
-  if (gObj.position[0] + gObj.width < 0)
-    gObj.position[0] = gl.canvas.clientWidth + gObj.width
-
-  if (gObj.position[0] > gl.canvas.clientWidth + gObj.width)
-    gObj.position[0] = -gObj.width
-
-  if (gObj.position[1] + gObj.height< 0)
-    gObj.position[1] = gl.canvas.clientHeight + gObj.height
-
-  if (gObj.position[1] > gl.canvas.clientHeight + gObj.height)
-    gObj.position[1] = -gObj.height
+  wrapBounds(gObj, gl.canvas)
 
   m4.identity(gObj.matrix)
   m4.translate(gObj.matrix, gObj.position, gObj.matrix)
@@ -224,7 +133,7 @@ function defaultUpdate(gObj, gameState, t) {
   m4.rotateZ(gObj.matrix, gObj.rotateZ, gObj.matrix)
   m4.scale(gObj.matrix, gObj.scaleV3, gObj.matrix)
 
-  bbox2(gObj)
+  updateBbox(gObj)
 }
 
 function updateBullet(bullet, gameState, t) {
@@ -233,25 +142,12 @@ function updateBullet(bullet, gameState, t) {
   defaultUpdate(bullet, gameState, t)
 }
 
-var objTypeToUpdateFn = { }
-objTypeToUpdateFn[gameTypes.ship] = updateShip
+var objTypeToUpdateFn = {}
+objTypeToUpdateFn[gameTypes.ship]   = updateShip
 objTypeToUpdateFn[gameTypes.bullet] = updateBullet
-window.objTypeToUpdateFn = objTypeToUpdateFn
 
 function update(gObject, gameState, t) {
   (objTypeToUpdateFn[gObject.type] || defaultUpdate)(gObject, gameState, t)
-}
-
-const log = throttle((...args) => console.log.apply(console, args), 1000)
-
-function setupModelBuffer(gl, data) {
-  var faceData = parseModel.parseJson(data)
-  var indices = parseModel.getIndicesFromFaces(faceData)
-  var arrays = {
-    position: {numComponents: 3, data: data.vertices},
-    indices: {numComponents: 3, data: indices}
-  }
-  return twgl.createBufferInfoFromArrays(gl, arrays)
 }
 
 function initShip(position, shipData) {
@@ -291,6 +187,7 @@ function initAsteroid(screenSize, asteroidData) {
   asteroid.velocity[0] = rand() * .5 * (rand() > .5 ? -1 : 1)
   asteroid.velocity[1] = rand() * .5 * (rand() > .5 ? -1 : 1)
   setV3(asteroid.velocity, 0,0,0)
+  asteroid.rotateZ = rand(Math.PI*2)
   asteroid.scale = 4
   asteroid.scaleV3 = v3.create(asteroid.scale, asteroid.scale, asteroid.scale)
   // TODO move bbox into utils.
@@ -318,8 +215,6 @@ function initAsteroid(screenSize, asteroidData) {
     0
   )
   // TODO padding around ship in center
-  asteroid.rotateZ = 0//rand(Math.PI*2)
-  asteroid.rotateZ = Math.PI/6
   asteroid.bufferInfo = asteroidData.bufferInfo
   return asteroid
 }
@@ -370,7 +265,7 @@ function setupGameObjects(gameState, modelsData) {
   }
 }
 
-function drawBbox2(gl, programInfo, gameState, go) {
+function drawBbox(gl, programInfo, gameState, go) {
   var w = (go.bbox2.max[0] - go.bbox2.min[0])
   var h = (go.bbox2.max[1] - go.bbox2.min[1])
   const r = makeRect(gl, w, h)
@@ -395,7 +290,7 @@ function drawGameObject(gameObject, gameState, programInfo) {
   twgl.setBuffersAndAttributes(gl, programInfo, gameObject.bufferInfo)
   twgl.setUniforms(programInfo, gameState.uniforms)
   gl.drawElements(gl.LINES, gameObject.bufferInfo.numElements, gl.UNSIGNED_SHORT, 0)
-  drawBbox2(gl, programInfo, gameState, gameObject)
+  gameState.config.drawBboxes && drawBbox(gl, programInfo, gameState, gameObject)
 }
 
 function main(modelsData) {
@@ -436,15 +331,8 @@ function main(modelsData) {
     gameState.objects = gameState.objects.filter(
       gObj => !(gObj.shouldRemove && gObj.type === gameTypes.bullet)
     )
-    // requestAnimationFrame(loop)
+    requestAnimationFrame(loop)
   }
-//
-var button = document.createElement('button')
-button.innerText = ' hlleo'
-button.onclick = function() {
-  requestAnimationFrame(loop)
-}
-document.body.appendChild(button)
   requestAnimationFrame(loop)
 }
 
