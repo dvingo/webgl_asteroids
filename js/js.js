@@ -37,7 +37,7 @@ const gameState = {
   canvasSize: {w: 600, h: 400},
   objects: [],
   getShip: function(){return this.objects[0]},
-  bulletLifetimeMs: 4000,
+  bulletLifetimeMs: 2000,
   bulletData: null,
   bulletSpeed: 2,
   bulletSize: 2,
@@ -50,7 +50,7 @@ const gameState = {
     color: v3.create(.8, .8, .8)
   },
   drawBboxes: false,
-  globalScaleFactor: 3
+  globalScaleFactor: 1
 }
 var gameTypes = objFromStrs('ship', 'asteroid', 'bullet')
 window.gameState = gameState
@@ -118,14 +118,21 @@ function updateBullet(bullet, gameState, t) {
   if (getTime() - bullet.createdTime > gameState.bulletLifetimeMs) {
     bullet.shouldRemove = true
   } else {
+    var objsToAdd = []
     gameState.objects.forEach(obj => {
-      if (obj.type === gameTypes.asteroid && intersects(obj, bullet)) {
-        // TODO at this point make 4 new smaller asteroids, set their
-        // velocity based on obj and then set obj.shouldRemove = true
+      if (obj.type === gameTypes.asteroid && !obj.shouldRemove && intersects(obj, bullet)) {
+        var len = objsToAdd.length
+        obj.shouldRemove = true
+        bullet.shouldRemove = true
         setV3(bullet.color, 1, 0, 0)
         setV3(obj.color, 1, 0, 0)
+        if (obj.life > 0) {
+          for (var i = 0; i < 4;i++)
+            objsToAdd.push(initSmallAsteroid(gameState, obj, i))
+        }
       }
     })
+    gameState.objects = gameState.objects.concat(objsToAdd)
     defaultUpdate(bullet, gameState, t)
   }
 }
@@ -158,9 +165,32 @@ function initShip(position, shipData) {
   return ship
 }
 
+function initSmallAsteroid(gameState, parentAsteroid, i) {
+  var asteroid = new GObject
+  var asteroidData = gameState.asteroidData
+  asteroid.type = gameTypes.asteroid
+  asteroid.life = parentAsteroid.life - 1
+  setV3Length(asteroid.velocity, v3.length(parentAsteroid.velocity) * (rand()+.5))
+  setV3Angle(asteroid.velocity,
+    getV3Angle(parentAsteroid.velocity) + rand(Math.PI*2) * (i < 2 ? -1 : 1))
+  asteroid.rotateZ = rand(Math.PI*2)
+  asteroid.position[0] = parentAsteroid.position[0] + rand(5) * (rand() > .5 ? -1 : 1)
+  asteroid.position[1] = parentAsteroid.position[1] + rand(5)* (rand() > .5 ? -1 : 1)
+  asteroid.position[2] = parentAsteroid.position[2]
+  asteroid.scale = 2
+  asteroid.originalScaleV3 = v3.create(asteroid.scale, asteroid.scale, asteroid.scale)
+  asteroid.scaleV3 = v3.create(asteroid.scale, asteroid.scale, asteroid.scale)
+  scaleObj(asteroid, gameState.globalScaleFactor)
+  asteroid.bufferInfo = asteroidData.bufferInfo
+  updateGObjectMatrix(asteroid)
+  setupBbox(asteroid, asteroidData.modelData.vertices)
+  return asteroid
+}
+
 function initAsteroid(screenSize, asteroidData, ship) {
   var asteroid = new GObject
   asteroid.type = gameTypes.asteroid
+  asteroid.life = 1
   asteroid.velocity[0] = rand() * .5 * (rand() > .5 ? -1 : 1)
   asteroid.velocity[1] = rand() * .5 * (rand() > .5 ? -1 : 1)
   asteroid.rotateZ = rand(Math.PI*2)
@@ -310,9 +340,7 @@ function main(modelsData) {
       }
     }
 
-    gameState.objects = gameState.objects.filter(
-      gObj => !(gObj.shouldRemove && gObj.type === gameTypes.bullet)
-    )
+    gameState.objects = gameState.objects.filter(gObj => !(gObj.shouldRemove))
     requestAnimationFrame(loop)
   }
   requestAnimationFrame(loop)

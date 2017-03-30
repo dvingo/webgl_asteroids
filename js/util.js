@@ -233,7 +233,7 @@ export const pV3 = v => v[0] + ', ' + v[1] + ', ' + v[2]
 export const setV3 = (v, x,y,z) => (v[0]=x,v[1]=y,v[2]=z)
 
 export const getV3Angle = v => Math.atan2(v[1], v[0])
-
+export const copyV3Angle = (v1, v2) => setV3Angle(v1, getV3Angle(v2))
 export const setV3Length = (v, length) => {
   var angle = getV3Angle(v)
   v[0] = Math.cos(angle) * length
