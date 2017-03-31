@@ -5,7 +5,7 @@ import {
   createCanvas, validKeys, keyNames, getJson, lerp, range, findIndex, getTime,
   makePool, makeRect, getV3Angle, setV3Angle, setV3Length, setV3,
   log, wrapBounds, setupModelBuffer, intersects, GObject, setupBbox,
-  updateGObjectMatrix
+  updateGObjectMatrix, createEl
 } from './util'
 const { m4, v3 } = twgl
 window.twgl = twgl
@@ -15,6 +15,8 @@ EventTarget.prototype.on = function(){this.addEventListener.apply(this,arguments
 
 function bulletMaker() { return new GObject }
 
+var gameTypes = objFromStrs('ship', 'asteroid', 'bullet')
+var gameStates = objFromStrs('beforePlaying', 'playing', 'gameOver', 'gameWon')
 const gameState = {
   // TODO lerp this see coding math for high to low lerp
   //    on low scale factor (like .5) we want low thrust (.001 here)
@@ -26,6 +28,7 @@ const gameState = {
   maxVelocity: 10,
   rotateBy: Math.PI/80,
   numAsteroids: 10,
+  state: gameStates.beforePlaying,
   keys: {
     ctrlPressed: false,
     leftPressed: false,
@@ -52,7 +55,6 @@ const gameState = {
   drawBboxes: false,
   globalScaleFactor: 1
 }
-var gameTypes = objFromStrs('ship', 'asteroid', 'bullet')
 window.gameState = gameState
 
 const throttledMakeBullet = throttle(function() {
@@ -93,10 +95,12 @@ function updateShip(ship, gameState, t) {
 
   gameState.objects.forEach(obj => {
     setV3(obj.color, .8, .8, .8)
-    if (obj === ship) return
+    if (obj.type != gameTypes.asteroid) return
     if (intersects(obj, ship)) {
       setV3(ship.color, 1, 0, 0)
       setV3(obj.color, 1, 0, 0)
+      if (gameState.state == gameStates.playing)
+        gameState.state = gameStates.gameOver
     }
   })
 
@@ -231,25 +235,52 @@ function makeBullet(gl, ship, bulletData, bulletPool) {
   return bullet
 }
 
+function handlePlayingKeyDown(keyCode) {
+  if (validKeys.indexOf(keyCode) < 0) { return }
+  if (keyCode == keyNames.up || keyCode == keyNames.w)
+    gameState.keys.upPressed = true
+  if (keyCode == keyNames.down || keyCode == keyNames.s)
+    gameState.keys.downPressed = true
+  if (keyCode == keyNames.left || keyCode == keyNames.a)
+    gameState.keys.leftPressed = true
+  if (keyCode == keyNames.right || keyCode == keyNames.d)
+    gameState.keys.rightPressed = true
+  if (keyCode == keyNames.space) gameState.keys.spacePressed = true
+  if (keyCode == keyNames.ctrl) gameState.drawBboxes = !gameState.drawBboxes
+}
+
 window.on('keyup', ({keyCode}) => {
+  if (gameState.state != gameStates.playing) { return }
   console.log('keyup', keyCode);
-  if (keyCode == keyNames.up) gameState.keys.upPressed = false
-  if (keyCode == keyNames.down) gameState.keys.downPressed = false
-  if (keyCode == keyNames.left) gameState.keys.leftPressed = false
-  if (keyCode == keyNames.right) gameState.keys.rightPressed = false
+  if (keyCode == keyNames.up || keyCode == keyNames.w)
+    gameState.keys.upPressed = false
+  if (keyCode == keyNames.down || keyCode == keyNames.s)
+    gameState.keys.downPressed = false
+  if (keyCode == keyNames.left || keyCode == keyNames.a)
+    gameState.keys.leftPressed = false
+  if (keyCode == keyNames.right || keyCode == keyNames.d)
+    gameState.keys.rightPressed = false
   if (keyCode == keyNames.space) gameState.keys.spacePressed = false
   if (keyCode == keyNames.ctrl) gameState.keys.ctrlPressed = false
 })
 
+window.on('mousedown', () => {
+  if (gameState.state == gameStates.playing)
+    gameState.keys.spacePressed = true
+})
+window.on('mouseup', () => {
+  if (gameState.state == gameStates.playing)
+    gameState.keys.spacePressed = false
+})
+
 window.on('keydown', ({keyCode}) => {
   console.log('keydown: ', keyCode)
-  if (validKeys.indexOf(keyCode) < 0) { return }
-  if (keyCode == keyNames.up) gameState.keys.upPressed = true
-  if (keyCode == keyNames.down) gameState.keys.downPressed = true
-  if (keyCode == keyNames.left) gameState.keys.leftPressed = true
-  if (keyCode == keyNames.right) gameState.keys.rightPressed = true
-  if (keyCode == keyNames.space) gameState.keys.spacePressed = true
-  if (keyCode == keyNames.ctrl) gameState.drawBboxes = !gameState.drawBboxes
+
+  if (gameState.state == gameStates.playing)
+    handlePlayingKeyDown(keyCode)
+
+  if (gameState.state == gameStates.beforePlaying)
+    gameState.state = gameStates.playing
 })
 
 function setupGameObjects(gameState, modelsData) {
@@ -305,8 +336,51 @@ function drawGameObject(gameObject, gameState, programInfo) {
   gameState.drawBboxes && drawBbox(gl, programInfo, gameState, gameObject)
 }
 
-function main(modelsData) {
+function setupCanvases() {
+  const container = createEl('div')
+  container.style.position = 'relative'
   const canvas = createCanvas(gameState.canvasSize.w, gameState.canvasSize.h)
+  canvas.style.boxShadow = '1px 1px 4px hsla(0, 0%, 0%, 0.8)'
+  canvas.style.zIndex = -1
+  const txtCanvas = createCanvas(gameState.canvasSize.w, gameState.canvasSize.h)
+  txtCanvas.setAttribute('width', gameState.canvasSize.w)
+  txtCanvas.setAttribute('height', gameState.canvasSize.h)
+  txtCanvas.style.position = 'absolute'
+  txtCanvas.style.top = 0
+  txtCanvas.style.left = 0
+
+  container.appendChild(canvas)
+  container.appendChild(txtCanvas)
+  document.body.appendChild(container)
+  gameState.canvas = canvas
+  gameState.txtCanvas = txtCanvas
+  gameState.txtCtx = txtCanvas.getContext('2d')
+}
+
+function drawGameText(gameState) {
+  var ctx = gameState.txtCtx
+  ctx.clearRect(0, 0, gameState.txtCanvas.clientWidth, gameState.txtCanvas.clientHeight)
+  if (gameState.state == gameStates.beforePlaying) {
+    ctx.fillStyle = 'white'
+    ctx.font = '24px monospace'
+    ctx.fillText('Press any key to begin.', 100, 100)
+  }
+  if (gameState.state == gameStates.gameOver) {
+    ctx.fillStyle = 'white'
+    ctx.font = '24px monospace'
+    ctx.fillText('Game Over.', 100, 100)
+  }
+  if (gameState.state == gameStates.gameWon) {
+    ctx.fillStyle = 'white'
+    ctx.font = '24px monospace'
+    ctx.fillText('You win! :)', 100, 100)
+  }
+}
+
+function main(modelsData) {
+  setupCanvases()
+
+  var canvas = gameState.canvas
   var gl = canvas.getContext('webgl')
   var programInfo = twgl.createProgramInfo(gl, ['vs', 'fs'])
   gameState.gl = gl
@@ -325,6 +399,8 @@ function main(modelsData) {
     gl.clearColor(0, 0, 0, 1)
     gl.clear(gl.COLOR_BUFFER_BIT)
 
+    drawGameText(gameState)
+
     for (var i = 0, len = gameState.objects.length; i < len; i++) {
       update(gameState.objects[i], gameState, time)
     }
@@ -341,6 +417,8 @@ function main(modelsData) {
     }
 
     gameState.objects = gameState.objects.filter(gObj => !(gObj.shouldRemove))
+    if (!gameState.objects.filter(o => o.type == gameTypes.asteroid).length)
+      gameState.state = gameStates.gameWon
     requestAnimationFrame(loop)
   }
   requestAnimationFrame(loop)

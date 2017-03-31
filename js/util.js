@@ -1,5 +1,5 @@
 import parseModel from './parseJson'
-const createEl = document.createElement.bind(document)
+export const createEl = document.createElement.bind(document)
 
 export function makePool(constructor, count) {
   var pool = []
@@ -90,8 +90,7 @@ export var createCanvas = (width, height) => {
   const canvas = createEl('canvas')
   canvas.style.width = width + 'px'
   canvas.style.height = height + 'px'
-  canvas.style.boxShadow = '1px 1px 4px hsla(0, 0%, 0%, 0.8)'
-  return document.body.appendChild(canvas)
+  return canvas
 }
 
 export const keyNames = {
@@ -108,7 +107,6 @@ export const keyNames = {
 }
 
 export const validKeys = Object.keys(keyNames).map(i => keyNames[i])
-
 
 export const getJson = (endpoint, cb) => {
   const xhr = new XMLHttpRequest

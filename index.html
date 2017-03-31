@@ -3,8 +3,35 @@
   <head>
     <meta charset="utf-8">
     <title>Asteroids</title>
+    <style>
+      .controls__table {
+        font-family: monospace;
+        table-layout: fixed;
+        border-collapse: collapse;
+        background: black;
+        color: white;
+        margin: 1rem 0;
+      }
+      .controls__table td {
+        padding: .4rem 1rem;
+        border: 1px solid;
+      }
+    </style>
   </head>
   <body>
+    <div class="controls">
+      <table class="controls__table">
+        <tbody>
+        <tr><th>key</th><th>action</th></tr>
+        <tr><td>w or up arrow</td><td>thrust forward</td></tr>
+        <tr><td>s or down arrow</td><td>thrust backward</td></tr>
+        <tr><td>a or left arrow</td><td>rotate ship counter clockwise</td></tr>
+        <tr><td>d or right arrow</td><td>rotate ship clockwise</td></tr>
+        <tr><td>space or main mouse down</td><td>fire bullet</td></tr>
+        <tr><td>ctrl</td><td>toggle bounding boxes</td></tr>
+        </tbody>
+      </table>
+    </div>
     <script type="vertex" id="vs">
     attribute vec4 position;
     uniform mat4 u_viewProjection;
