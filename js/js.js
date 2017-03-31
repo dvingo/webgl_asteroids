@@ -282,8 +282,8 @@ function drawBbox(gl, programInfo, gameState, go) {
   var h = (go.bbox.max[1] - go.bbox.min[1])
   const r = makeRect(gl, w, h)
   setV3(r.position,
-    Math.abs(go.bbox.min[0]) + w/2,
-    Math.abs(go.bbox.min[1]) + h/2,
+    go.bbox.min[0] + w/2,
+    go.bbox.min[1] + h/2,
     go.position[2]
   )
   m4.identity(r.matrix)

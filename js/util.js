@@ -100,7 +100,11 @@ export const keyNames = {
   down: 40,
   up: 38,
   space: 32,
-  ctrl: 17
+  ctrl: 17,
+  w: 87,
+  a: 65,
+  s: 83,
+  d: 68
 }
 
 export const validKeys = Object.keys(keyNames).map(i => keyNames[i])
@@ -248,16 +252,16 @@ export const setV3Angle = (v, a) => {
 
 export const wrapBounds = (gObj, canvas) => {
   if (gObj.position[0] + gObj.width < 0)
-    gObj.position[0] = canvas.clientWidth + gObj.width
+    gObj.position[0] = canvas.clientWidth + gObj.width/2
 
   if (gObj.position[0] > canvas.clientWidth + gObj.width)
-    gObj.position[0] = -gObj.width
+    gObj.position[0] = -gObj.width/2
 
   if (gObj.position[1] + gObj.height < 0)
-    gObj.position[1] = canvas.clientHeight + gObj.height
+    gObj.position[1] = canvas.clientHeight + gObj.height/2
 
   if (gObj.position[1] > canvas.clientHeight + gObj.height)
-    gObj.position[1] = -gObj.height
+    gObj.position[1] = -gObj.height/2
 }
 
 /**
