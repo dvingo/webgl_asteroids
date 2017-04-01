@@ -1,5 +1,6 @@
 import parseModel from './parseJson'
 export const createEl = document.createElement.bind(document)
+export const byId = document.getElementById.bind(document)
 
 export function makePool(constructor, count) {
   var pool = []
@@ -119,6 +120,12 @@ export const getJson = (endpoint, cb) => {
   xhr.send()
 }
 export function lerp(t, n, m) { return n + t*(m-n) }
+export function norm(val, min, max) {
+  return (val - min) / (max - min)
+}
+export const across = (val, x1, x2, y1, y2) =>
+  lerp(norm(val, x1, x2), y1, y2)
+
 
 function augmentTypedArray(typedArray, numComponents) {
   var cursor = 0;

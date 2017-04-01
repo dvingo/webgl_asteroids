@@ -5,7 +5,7 @@ import {
   createCanvas, validKeys, keyNames, getJson, lerp, range, findIndex, getTime,
   makePool, makeRect, getV3Angle, setV3Angle, setV3Length, setV3,
   log, wrapBounds, setupModelBuffer, intersects, GObject, setupBbox,
-  updateGObjectMatrix, createEl
+  updateGObjectMatrix, createEl, across, byId
 } from './util'
 const { m4, v3 } = twgl
 window.twgl = twgl
@@ -16,18 +16,13 @@ EventTarget.prototype.on = function(){this.addEventListener.apply(this,arguments
 function bulletMaker() { return new GObject }
 
 var gameTypes = objFromStrs('ship', 'asteroid', 'bullet')
+var shipTypes = objFromStrs('boring', 'fancy')
 var gameStates = objFromStrs('beforePlaying', 'playing', 'gameOver', 'gameWon')
 const gameState = {
-  // TODO lerp this see coding math for high to low lerp
-  //    on low scale factor (like .5) we want low thrust (.001 here)
-  //
-  // allow scale factors between .5 and 4 in this example and map that
-  // to a thrust amount.
-  //scaleFactor => across(.5, 4, .001, .03)
-  thrust: scaleFactor => .03,
+  thrust: scaleFactor => across(scaleFactor, .5, 4, .018, .03),
   maxVelocity: 10,
   rotateBy: Math.PI/80,
-  numAsteroids: 10,
+  numAsteroids: 1,
   state: gameStates.beforePlaying,
   keys: {
     ctrlPressed: false,
@@ -40,6 +35,7 @@ const gameState = {
   canvasSize: {w: 600, h: 400},
   objects: [],
   getShip: function(){return this.objects[0]},
+  shipType: shipTypes.boring,
   bulletLifetimeMs: 2000,
   bulletData: null,
   bulletSpeed: 2,
@@ -68,8 +64,22 @@ function isAccelerating(gameState) {
          gameState.keys.downPressed
 }
 
+function getShipRotation() {
+  var ship = gameState.getShip()
+  var isShipFancy = gameState.shipType == shipTypes.fancy
+  var rotateField = isShipFancy ? 'rotateY' : 'rotateZ'
+  var rotateOffset = isShipFancy ? Math.PI/2 : 0
+  return ship[rotateField] - rotateOffset
+}
+function getShipRotationField() {
+  var isShipFancy = gameState.shipType == shipTypes.fancy
+  return isShipFancy ? 'rotateY' : 'rotateZ'
+}
+
 function updateShip(ship, gameState, t) {
   var gl = gameState.gl
+  var shipRotateAngle = getShipRotation()
+  var rotateField = getShipRotationField()
   if (gameState.keys.upPressed)
     v3.add(ship.velocity, ship.acceleration, ship.velocity)
 
@@ -77,12 +87,12 @@ function updateShip(ship, gameState, t) {
     v3.subtract(ship.velocity, ship.acceleration, ship.velocity)
 
   if (gameState.keys.leftPressed) {
-    ship.rotateZ += gameState.rotateBy
-    setV3Angle(ship.acceleration, ship.rotateZ)
+    ship[rotateField] += gameState.rotateBy
+    setV3Angle(ship.acceleration, shipRotateAngle)
   }
   if (gameState.keys.rightPressed) {
-    ship.rotateZ -= gameState.rotateBy
-    setV3Angle(ship.acceleration, ship.rotateZ)
+    ship[rotateField] -= gameState.rotateBy
+    setV3Angle(ship.acceleration, shipRotateAngle)
   }
   if (v3.length(ship.velocity) > gameState.maxVelocity)
     setV3Length(ship.velocity, gameState.maxVelocity)
@@ -152,20 +162,40 @@ function update(gObject, gameState, t) {
 const scaleObj = (gobj, scaleFactor) =>
   v3.mulScalar(gobj.originalScaleV3, scaleFactor, gobj.scaleV3)
 
-function initShip(position, shipData) {
-  var ship = new GObject
+function setupFancyShip(ship, shipData) {
   setV3Length(ship.acceleration, gameState.thrust(gameState.globalScaleFactor))
   ship.type = gameTypes.ship
   ship.bufferInfo = shipData.bufferInfo
-  ship.position = position
+  ship.scale = .05
+  ship.originalScaleV3 = v3.create(ship.scale, ship.scale, ship.scale)
+  ship.scaleV3 = v3.create(ship.scale, ship.scale, ship.scale)
+  scaleObj(ship, gameState.globalScaleFactor)
+  ship.rotateX = Math.PI/2
+  ship.rotateY = Math.PI/2
+  updateGObjectMatrix(ship)
+  setupBbox(ship, shipData.modelData.vertices)
+}
+
+function setupBoringShip(ship, shipData) {
+  setV3Length(ship.acceleration, gameState.thrust(gameState.globalScaleFactor))
+  ship.type = gameTypes.ship
+  ship.bufferInfo = shipData.bufferInfo
   ship.scale = 2
   ship.originalScaleV3 = v3.create(ship.scale, ship.scale, ship.scale)
   ship.scaleV3 = v3.create(ship.scale, ship.scale, ship.scale)
   scaleObj(ship, gameState.globalScaleFactor)
-  // ship.rotateX= Math.PI/2
-  // ship.rotateY= Math.PI/2
   updateGObjectMatrix(ship)
   setupBbox(ship, shipData.modelData.vertices)
+  console.log('setup boring ship, : ', ship);
+}
+
+function initShip(position, shipData) {
+  var ship = new GObject
+  if (gameState.shipType == shipTypes.fancy)
+    setupFancyShip(ship, shipData)
+  else
+    setupBoringShip(ship, shipData)
+  ship.position = position
   return ship
 }
 
@@ -205,13 +235,13 @@ function initAsteroid(screenSize, asteroidData, ship) {
   asteroid.bufferInfo = asteroidData.bufferInfo
   updateGObjectMatrix(asteroid)
   setupBbox(asteroid, asteroidData.modelData.vertices)
-  do {
+  // do {
     asteroid.position = v3.create(
       lerp(rand(), 0, screenSize.w),
       lerp(rand(), 0, screenSize.h),
       0
     )
-  } while (intersects(ship, asteroid))
+  // } while (intersects(ship, asteroid))
   return asteroid
 }
 
@@ -224,7 +254,7 @@ function makeBullet(gl, ship, bulletData, bulletPool) {
   bullet.originalScaleV3 = v3.create(1, 1, 1)
   scaleObj(bullet, gameState.globalScaleFactor)
   setV3Length(bullet.velocity, v3.length(ship.velocity) + gameState.bulletSpeed)
-  setV3Angle(bullet.velocity, ship.rotateZ)
+  setV3Angle(bullet.velocity, getShipRotation())
   updateGObjectMatrix(bullet)
   setupBbox(bullet, bulletData.vertices)
   bullet.position = v3.create(
@@ -250,7 +280,7 @@ function handlePlayingKeyDown(keyCode) {
 }
 
 window.on('keyup', ({keyCode}) => {
-  if (gameState.state != gameStates.playing) { return }
+  //if (gameState.state != gameStates.playing) { return }
   console.log('keyup', keyCode);
   if (keyCode == keyNames.up || keyCode == keyNames.w)
     gameState.keys.upPressed = false
@@ -276,35 +306,44 @@ window.on('mouseup', () => {
 window.on('keydown', ({keyCode}) => {
   console.log('keydown: ', keyCode)
 
-  if (gameState.state == gameStates.playing)
+  // if (gameState.state == gameStates.playing)
     handlePlayingKeyDown(keyCode)
 
-  if (gameState.state == gameStates.beforePlaying)
-    gameState.state = gameStates.playing
+  // if (gameState.state == gameStates.beforePlaying)
+    // gameState.state = gameStates.playing
 })
 
 function setupGameObjects(gameState, modelsData) {
   var gl = gameState.gl
 
-  var shipBufferInfo = setupModelBuffer(gl, modelsData[0])
-  gameState.shipData = {bufferInfo: shipBufferInfo, modelData: modelsData[0]}
+  /* Ship setup */
+  var fancyShipBufferInfo = setupModelBuffer(gl, modelsData[0])
+  var boringShipBufferInfo = setupModelBuffer(gl, modelsData[1])
+  gameState.fancyShipData = {bufferInfo: fancyShipBufferInfo, modelData: modelsData[0]}
+  gameState.boringShipData = {bufferInfo: boringShipBufferInfo, modelData: modelsData[1]}
+  var startShipData = (gameState.shipType == shipTypes.boring
+    ? gameState.boringShipData : gameState.fancyShipData)
   var center = v3.create(gl.canvas.clientWidth / 2, gl.canvas.clientHeight / 2, 0)
-  gameState.objects.push(initShip(center, gameState.shipData))
+  gameState.objects.push(initShip(center, startShipData))
 
+  /* Bullet setup */
   var bulletVertices = twgl.primitives.createCubeVertices(gameState.bulletSize)
   gameState.bulletData = {
     bufferInfo: twgl.primitives.createCubeBufferInfo(gl, gameState.bulletSize),
     vertices: twgl.primitives.createCubeVertices(gameState.bulletSize).position
   }
 
-  var asteroidBufferInfo = setupModelBuffer(gl, modelsData[1])
-  gameState.asteroidData = {bufferInfo: asteroidBufferInfo, modelData: modelsData[1]}
+  /* Asteroid setup */
+  var asteroidBufferInfo = setupModelBuffer(gl, modelsData[2])
+  gameState.asteroidData = {bufferInfo: asteroidBufferInfo, modelData: modelsData[2]}
 
   var screenSize = {
     w:gl.canvas.clientWidth, h: gl.canvas.clientHeight
   }
   for (var i = 0; i < gameState.numAsteroids; i++) {
-    gameState.objects.push(initAsteroid(screenSize, gameState.asteroidData, gameState.getShip()))
+    gameState.objects.push(
+      initAsteroid(screenSize, gameState.asteroidData, gameState.getShip())
+    )
   }
 }
 
@@ -357,6 +396,33 @@ function setupCanvases() {
   gameState.txtCtx = txtCanvas.getContext('2d')
 }
 
+function resetGame() {
+  var ship = gameState.getShip()
+  var gl = gameState.gl
+  gameState.objects = gameState.objects.filter(o => o.type === gameTypes.ship)
+  setV3(ship.velocity, 0, 0, 0)
+  var rotateField = getShipRotationField()
+  ship[rotateField] = 0
+  setV3Angle(ship.acceleration, 0)
+  setV3(ship.position,
+     gl.canvas.clientWidth / 2, gl.canvas.clientHeight / 2, 0
+  )
+  updateGObjectMatrix(ship)
+  var screenSize = {
+    w: gl.canvas.clientWidth, h: gl.canvas.clientHeight
+  }
+  gameState.objects.push.apply(gameState.objects,
+    range(gameState.numAsteroids).map(a =>
+      initAsteroid(screenSize, gameState.asteroidData, ship)
+    )
+  )
+  gameState.state = gameStates.beforePlaying
+}
+
+function setupControls() {
+  byId('restart').on('click', resetGame)
+}
+
 function drawGameText(gameState) {
   var ctx = gameState.txtCtx
   ctx.clearRect(0, 0, gameState.txtCanvas.clientWidth, gameState.txtCanvas.clientHeight)
@@ -378,6 +444,7 @@ function drawGameText(gameState) {
 }
 
 function main(modelsData) {
+  setupControls()
   setupCanvases()
 
   var canvas = gameState.canvas
@@ -424,8 +491,13 @@ function main(modelsData) {
   requestAnimationFrame(loop)
 }
 
+
+
+
+gameState.shipType = shipTypes.fancy
+gameState.shipType = shipTypes.boring
 awaitAll(
-  // parial(getJson, 'models/plane.json'),
+  partial(getJson, 'models/plane.json'),
   partial(getJson, 'models/shipRotatedYUp.json'),
   partial(getJson, 'models/asteroid2.json'),
   main

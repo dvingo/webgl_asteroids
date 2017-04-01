@@ -5,6 +5,7 @@
     <title>Asteroids</title>
     <style>
       .controls__table {
+        user-select: none;
         font-family: monospace;
         table-layout: fixed;
         border-collapse: collapse;
@@ -12,9 +13,15 @@
         color: white;
         margin: 1rem 0;
       }
-      .controls__table td {
+      .controls__table td,
+      .controls__table th
+      {
         padding: .4rem 1rem;
         border: 1px solid;
+      }
+      #restart {
+        margin: 0 0 1rem 0;
+        user-select: none;
       }
     </style>
   </head>
@@ -31,6 +38,7 @@
         <tr><td>ctrl</td><td>toggle bounding boxes</td></tr>
         </tbody>
       </table>
+      <button id="restart">restart</button>
     </div>
     <script type="vertex" id="vs">
     attribute vec4 position;
