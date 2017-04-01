@@ -162,10 +162,11 @@ function update(gObject, gameState, t) {
 const scaleObj = (gobj, scaleFactor) =>
   v3.mulScalar(gobj.originalScaleV3, scaleFactor, gobj.scaleV3)
 
-function setupFancyShip(ship, shipData) {
+function setupFancyShip(position, ship, shipData) {
   setV3Length(ship.acceleration, gameState.thrust(gameState.globalScaleFactor))
   ship.type = gameTypes.ship
   ship.bufferInfo = shipData.bufferInfo
+  ship.position = position
   ship.scale = .05
   ship.originalScaleV3 = v3.create(ship.scale, ship.scale, ship.scale)
   ship.scaleV3 = v3.create(ship.scale, ship.scale, ship.scale)
@@ -176,26 +177,25 @@ function setupFancyShip(ship, shipData) {
   setupBbox(ship, shipData.modelData.vertices)
 }
 
-function setupBoringShip(ship, shipData) {
+function setupBoringShip(position, ship, shipData) {
   setV3Length(ship.acceleration, gameState.thrust(gameState.globalScaleFactor))
   ship.type = gameTypes.ship
   ship.bufferInfo = shipData.bufferInfo
+  ship.position = position
   ship.scale = 2
   ship.originalScaleV3 = v3.create(ship.scale, ship.scale, ship.scale)
   ship.scaleV3 = v3.create(ship.scale, ship.scale, ship.scale)
   scaleObj(ship, gameState.globalScaleFactor)
   updateGObjectMatrix(ship)
   setupBbox(ship, shipData.modelData.vertices)
-  console.log('setup boring ship, : ', ship);
 }
 
 function initShip(position, shipData) {
   var ship = new GObject
   if (gameState.shipType == shipTypes.fancy)
-    setupFancyShip(ship, shipData)
+    setupFancyShip(position, ship, shipData)
   else
-    setupBoringShip(ship, shipData)
-  ship.position = position
+    setupBoringShip(position, ship, shipData)
   return ship
 }
 
@@ -491,11 +491,8 @@ function main(modelsData) {
   requestAnimationFrame(loop)
 }
 
-
-
-
-gameState.shipType = shipTypes.fancy
 gameState.shipType = shipTypes.boring
+gameState.shipType = shipTypes.fancy
 awaitAll(
   partial(getJson, 'models/plane.json'),
   partial(getJson, 'models/shipRotatedYUp.json'),
