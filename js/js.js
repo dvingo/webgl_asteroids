@@ -67,13 +67,13 @@ function isAccelerating(gameState) {
 function getShipRotation() {
   var ship = gameState.getShip()
   var isShipFancy = gameState.shipType == shipTypes.fancy
-  var rotateField = isShipFancy ? 'rotateY' : 'rotateZ'
-  var rotateOffset = isShipFancy ? Math.PI/2 : 0
+  var rotateField = 'rotateZ'//isShipFancy ? 'rotateY' : 'rotateZ'
+  var rotateOffset = 0//isShipFancy ? Math.PI/2 : 0
   return ship[rotateField] - rotateOffset
 }
 function getShipRotationField() {
   var isShipFancy = gameState.shipType == shipTypes.fancy
-  return isShipFancy ? 'rotateY' : 'rotateZ'
+  return 'rotateZ'//isShipFancy ? 'rotateY' : 'rotateZ'
 }
 
 function updateShip(ship, gameState, t) {
@@ -162,17 +162,84 @@ function update(gObject, gameState, t) {
 const scaleObj = (gobj, scaleFactor) =>
   v3.mulScalar(gobj.originalScaleV3, scaleFactor, gobj.scaleV3)
 
+
+function makeBullet(gl, ship, bulletData, bulletPool) {
+  var bullet = bulletPool.get()
+  bullet.createdTime = getTime()
+  bullet.shouldRemove = false
+  bullet.type = gameTypes.bullet
+  bullet.bufferInfo = bulletData.bufferInfo
+  bullet.originalScaleV3 = v3.create(1, 1, 1)
+  scaleObj(bullet, gameState.globalScaleFactor)
+  setV3Length(bullet.velocity, v3.length(ship.velocity) + gameState.bulletSpeed)
+  setV3Angle(bullet.velocity, getShipRotation())
+  updateGObjectMatrix(bullet)
+  setupBbox(bullet, bulletData.vertices)
+  bullet.position = v3.create(
+    ship.position[0] + Math.cos(ship.rotateZ) * ship.width / 4,
+    ship.position[1] + Math.sin(ship.rotateZ) * ship.height / 4,
+    ship.position[2]
+  )
+  return bullet
+}
+
+function handlePlayingKeyDown(keyCode) {
+  if (validKeys.indexOf(keyCode) < 0) { return }
+  if (keyCode == keyNames.up || keyCode == keyNames.w)
+    gameState.keys.upPressed = true
+  if (keyCode == keyNames.down || keyCode == keyNames.s)
+    gameState.keys.downPressed = true
+  if (keyCode == keyNames.left || keyCode == keyNames.a)
+    gameState.keys.leftPressed = true
+  if (keyCode == keyNames.right || keyCode == keyNames.d)
+    gameState.keys.rightPressed = true
+  if (keyCode == keyNames.space) gameState.keys.spacePressed = true
+  if (keyCode == keyNames.ctrl) gameState.drawBboxes = !gameState.drawBboxes
+}
+
+window.on('keyup', ({keyCode}) => {
+  //if (gameState.state != gameStates.playing) { return }
+  console.log('keyup', keyCode);
+  if (keyCode == keyNames.up || keyCode == keyNames.w)
+    gameState.keys.upPressed = false
+  if (keyCode == keyNames.down || keyCode == keyNames.s)
+    gameState.keys.downPressed = false
+  if (keyCode == keyNames.left || keyCode == keyNames.a)
+    gameState.keys.leftPressed = false
+  if (keyCode == keyNames.right || keyCode == keyNames.d)
+    gameState.keys.rightPressed = false
+  if (keyCode == keyNames.space) gameState.keys.spacePressed = false
+  if (keyCode == keyNames.ctrl) gameState.keys.ctrlPressed = false
+})
+
+window.on('mousedown', () => {
+  if (gameState.state == gameStates.playing)
+    gameState.keys.spacePressed = true
+})
+window.on('mouseup', () => {
+  if (gameState.state == gameStates.playing)
+    gameState.keys.spacePressed = false
+})
+
+window.on('keydown', ({keyCode}) => {
+  console.log('keydown: ', keyCode)
+
+  // if (gameState.state == gameStates.playing)
+    handlePlayingKeyDown(keyCode)
+
+  // if (gameState.state == gameStates.beforePlaying)
+    // gameState.state = gameStates.playing
+})
+
 function setupFancyShip(position, ship, shipData) {
   setV3Length(ship.acceleration, gameState.thrust(gameState.globalScaleFactor))
   ship.type = gameTypes.ship
   ship.bufferInfo = shipData.bufferInfo
   ship.position = position
-  ship.scale = .05
+  ship.scale = .5
   ship.originalScaleV3 = v3.create(ship.scale, ship.scale, ship.scale)
   ship.scaleV3 = v3.create(ship.scale, ship.scale, ship.scale)
   scaleObj(ship, gameState.globalScaleFactor)
-  ship.rotateX = Math.PI/2
-  ship.rotateY = Math.PI/2
   updateGObjectMatrix(ship)
   setupBbox(ship, shipData.modelData.vertices)
 }
@@ -244,74 +311,6 @@ function initAsteroid(screenSize, asteroidData, ship) {
   // } while (intersects(ship, asteroid))
   return asteroid
 }
-
-function makeBullet(gl, ship, bulletData, bulletPool) {
-  var bullet = bulletPool.get()
-  bullet.createdTime = getTime()
-  bullet.shouldRemove = false
-  bullet.type = gameTypes.bullet
-  bullet.bufferInfo = bulletData.bufferInfo
-  bullet.originalScaleV3 = v3.create(1, 1, 1)
-  scaleObj(bullet, gameState.globalScaleFactor)
-  setV3Length(bullet.velocity, v3.length(ship.velocity) + gameState.bulletSpeed)
-  setV3Angle(bullet.velocity, getShipRotation())
-  updateGObjectMatrix(bullet)
-  setupBbox(bullet, bulletData.vertices)
-  bullet.position = v3.create(
-    ship.position[0] + Math.cos(ship.rotateZ) * ship.width / 4,
-    ship.position[1] + Math.sin(ship.rotateZ) * ship.height / 4,
-    ship.position[2]
-  )
-  return bullet
-}
-
-function handlePlayingKeyDown(keyCode) {
-  if (validKeys.indexOf(keyCode) < 0) { return }
-  if (keyCode == keyNames.up || keyCode == keyNames.w)
-    gameState.keys.upPressed = true
-  if (keyCode == keyNames.down || keyCode == keyNames.s)
-    gameState.keys.downPressed = true
-  if (keyCode == keyNames.left || keyCode == keyNames.a)
-    gameState.keys.leftPressed = true
-  if (keyCode == keyNames.right || keyCode == keyNames.d)
-    gameState.keys.rightPressed = true
-  if (keyCode == keyNames.space) gameState.keys.spacePressed = true
-  if (keyCode == keyNames.ctrl) gameState.drawBboxes = !gameState.drawBboxes
-}
-
-window.on('keyup', ({keyCode}) => {
-  //if (gameState.state != gameStates.playing) { return }
-  console.log('keyup', keyCode);
-  if (keyCode == keyNames.up || keyCode == keyNames.w)
-    gameState.keys.upPressed = false
-  if (keyCode == keyNames.down || keyCode == keyNames.s)
-    gameState.keys.downPressed = false
-  if (keyCode == keyNames.left || keyCode == keyNames.a)
-    gameState.keys.leftPressed = false
-  if (keyCode == keyNames.right || keyCode == keyNames.d)
-    gameState.keys.rightPressed = false
-  if (keyCode == keyNames.space) gameState.keys.spacePressed = false
-  if (keyCode == keyNames.ctrl) gameState.keys.ctrlPressed = false
-})
-
-window.on('mousedown', () => {
-  if (gameState.state == gameStates.playing)
-    gameState.keys.spacePressed = true
-})
-window.on('mouseup', () => {
-  if (gameState.state == gameStates.playing)
-    gameState.keys.spacePressed = false
-})
-
-window.on('keydown', ({keyCode}) => {
-  console.log('keydown: ', keyCode)
-
-  // if (gameState.state == gameStates.playing)
-    handlePlayingKeyDown(keyCode)
-
-  // if (gameState.state == gameStates.beforePlaying)
-    // gameState.state = gameStates.playing
-})
 
 function setupGameObjects(gameState, modelsData) {
   var gl = gameState.gl
@@ -444,6 +443,7 @@ function drawGameText(gameState) {
 }
 
 function main(modelsData) {
+  console.log('modelsData: ', modelsData);
   setupControls()
   setupCanvases()
 
@@ -494,7 +494,8 @@ function main(modelsData) {
 gameState.shipType = shipTypes.boring
 gameState.shipType = shipTypes.fancy
 awaitAll(
-  partial(getJson, 'models/plane.json'),
+  // partial(getJson, 'models/plane.json'),
+  partial(getJson, 'models/fancy_plane.json'),
   partial(getJson, 'models/shipRotatedYUp.json'),
   partial(getJson, 'models/asteroid2.json'),
   main

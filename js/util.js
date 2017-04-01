@@ -43,9 +43,9 @@ export function findIndex(f, arr) {
 
 export function awaitAll() {
   var cbs = arguments
-  var r = [], count = cbs.length-1
+  var r = Array(cbs.length), count = cbs.length-1
   function cb(i, d) {
-    r.splice(i, 0, d)
+    r.splice(i, 1, d)
     count--
     if(!count) cbs[cbs.length-1](r)
   }
