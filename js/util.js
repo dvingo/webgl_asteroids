@@ -1,5 +1,6 @@
 import parseModel from './parseJson'
 export const createEl = document.createElement.bind(document)
+export const sel = document.querySelector.bind(document)
 export const byId = document.getElementById.bind(document)
 
 export function makePool(constructor, count) {
@@ -255,6 +256,7 @@ export const setV3Angle = (v, a) => {
   v[1] = Math.sin(a) * len
 }
 
+// TODO pass globalScaleFactor and multiple by width and height
 export const wrapBounds = (gObj, canvas) => {
   if (gObj.position[0] + gObj.width < 0)
     gObj.position[0] = canvas.clientWidth + gObj.width/2

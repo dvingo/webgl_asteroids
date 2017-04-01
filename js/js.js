@@ -5,7 +5,7 @@ import {
   createCanvas, validKeys, keyNames, getJson, lerp, range, findIndex, getTime,
   makePool, makeRect, getV3Angle, setV3Angle, setV3Length, setV3,
   log, wrapBounds, setupModelBuffer, intersects, GObject, setupBbox,
-  updateGObjectMatrix, createEl, across, byId
+  updateGObjectMatrix, createEl, across, byId, sel
 } from './util'
 const { m4, v3 } = twgl
 window.twgl = twgl
@@ -19,7 +19,7 @@ var gameTypes = objFromStrs('ship', 'asteroid', 'bullet')
 var shipTypes = objFromStrs('boring', 'fancy')
 var gameStates = objFromStrs('beforePlaying', 'playing', 'gameOver', 'gameWon')
 const gameState = {
-  thrust: scaleFactor => across(scaleFactor, .5, 4, .018, .03),
+  thrust: scaleFactor => .06,//across(scaleFactor, .5, 4, .06, .04),
   maxVelocity: 10,
   rotateBy: Math.PI/80,
   numAsteroids: 1,
@@ -231,9 +231,11 @@ window.on('keydown', ({keyCode}) => {
     // gameState.state = gameStates.playing
 })
 
-function setupFancyShip(position, ship, shipData) {
+function setupFancyShip(position, shipData) {
+  var ship = new GObject
   setV3Length(ship.acceleration, gameState.thrust(gameState.globalScaleFactor))
   ship.type = gameTypes.ship
+  ship.shipType = shipTypes.fancy
   ship.bufferInfo = shipData.bufferInfo
   ship.position = position
   ship.scale = .5
@@ -242,11 +244,14 @@ function setupFancyShip(position, ship, shipData) {
   scaleObj(ship, gameState.globalScaleFactor)
   updateGObjectMatrix(ship)
   setupBbox(ship, shipData.modelData.vertices)
+  return ship
 }
 
-function setupBoringShip(position, ship, shipData) {
+function setupBoringShip(position, shipData) {
+  var ship = new GObject
   setV3Length(ship.acceleration, gameState.thrust(gameState.globalScaleFactor))
   ship.type = gameTypes.ship
+  ship.shipType = shipTypes.boring
   ship.bufferInfo = shipData.bufferInfo
   ship.position = position
   ship.scale = 2
@@ -255,14 +260,6 @@ function setupBoringShip(position, ship, shipData) {
   scaleObj(ship, gameState.globalScaleFactor)
   updateGObjectMatrix(ship)
   setupBbox(ship, shipData.modelData.vertices)
-}
-
-function initShip(position, shipData) {
-  var ship = new GObject
-  if (gameState.shipType == shipTypes.fancy)
-    setupFancyShip(position, ship, shipData)
-  else
-    setupBoringShip(position, ship, shipData)
   return ship
 }
 
@@ -323,7 +320,11 @@ function setupGameObjects(gameState, modelsData) {
   var startShipData = (gameState.shipType == shipTypes.boring
     ? gameState.boringShipData : gameState.fancyShipData)
   var center = v3.create(gl.canvas.clientWidth / 2, gl.canvas.clientHeight / 2, 0)
-  gameState.objects.push(initShip(center, startShipData))
+
+  gameState.boringShip = setupBoringShip(center, gameState.boringShipData)
+  gameState.fancyShip = setupFancyShip(center, gameState.fancyShipData)
+  gameState.objects.push(gameState.shipType == shipTypes.boring
+    ? gameState.boringShip : gameState.fancyShip)
 
   /* Bullet setup */
   var bulletVertices = twgl.primitives.createCubeVertices(gameState.bulletSize)
@@ -418,32 +419,51 @@ function resetGame() {
   gameState.state = gameStates.beforePlaying
 }
 
+function switchShipType(currentShipType, gameState) {
+  var newShip = (currentShipType === shipTypes.boring
+    ? gameState.fancyShip : gameState.boringShip)
+  var currentShip = (currentShipType === shipTypes.boring
+    ? gameState.boringShip : gameState.fancyShip)
+  v3.copy(currentShip.position, newShip.position)
+  v3.copy(currentShip.velocity, newShip.velocity)
+  newShip.rotateZ = currentShip.rotateZ
+  gameState.objects.splice(0,1,newShip)
+}
+
 function setupControls() {
   byId('restart').on('click', resetGame)
+  sel('.select-fancy-ship').on('click', function() {
+    var currentShipType = gameState.getShip().shipType
+    if (currentShipType != shipTypes.fancy) {
+      this.className = 'select-fancy-ship controls__select--selected'
+      switchShipType(currentShipType, gameState)
+      sel('.select-boring-ship').className = 'select-fancy-ship controls__select'
+    }
+  })
+  sel('.select-boring-ship').on('click', function() {
+    var currentShipType = gameState.getShip().shipType
+    if (currentShipType != shipTypes.boring) {
+      this.className = 'select-boring-ship controls__select--selected'
+      sel('.select-fancy-ship').className = 'select-fancy-ship controls__select'
+      switchShipType(currentShipType, gameState)
+    }
+  })
 }
 
 function drawGameText(gameState) {
   var ctx = gameState.txtCtx
   ctx.clearRect(0, 0, gameState.txtCanvas.clientWidth, gameState.txtCanvas.clientHeight)
-  if (gameState.state == gameStates.beforePlaying) {
-    ctx.fillStyle = 'white'
-    ctx.font = '24px monospace'
+  ctx.fillStyle = 'white'
+  ctx.font = '24px monospace'
+  if (gameState.state == gameStates.beforePlaying)
     ctx.fillText('Press any key to begin.', 100, 100)
-  }
-  if (gameState.state == gameStates.gameOver) {
-    ctx.fillStyle = 'white'
-    ctx.font = '24px monospace'
+  if (gameState.state == gameStates.gameOver)
     ctx.fillText('Game Over.', 100, 100)
-  }
-  if (gameState.state == gameStates.gameWon) {
-    ctx.fillStyle = 'white'
-    ctx.font = '24px monospace'
+  if (gameState.state == gameStates.gameWon)
     ctx.fillText('You win! :)', 100, 100)
-  }
 }
 
 function main(modelsData) {
-  console.log('modelsData: ', modelsData);
   setupControls()
   setupCanvases()
 
@@ -491,10 +511,9 @@ function main(modelsData) {
   requestAnimationFrame(loop)
 }
 
-gameState.shipType = shipTypes.boring
 gameState.shipType = shipTypes.fancy
+gameState.shipType = shipTypes.boring
 awaitAll(
-  // partial(getJson, 'models/plane.json'),
   partial(getJson, 'models/fancy_plane.json'),
   partial(getJson, 'models/shipRotatedYUp.json'),
   partial(getJson, 'models/asteroid2.json'),

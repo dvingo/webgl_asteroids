@@ -4,6 +4,10 @@
     <meta charset="utf-8">
     <title>Asteroids</title>
     <style>
+      .controls {
+        font-family: monospace;
+        margin: 0 0 1rem 0;
+      }
       .controls__table {
         user-select: none;
         font-family: monospace;
@@ -19,9 +23,29 @@
         padding: .4rem 1rem;
         border: 1px solid;
       }
-      #restart {
-        margin: 0 0 1rem 0;
+
+      .controls__select,
+      .controls__select--selected
+      {
+        display: inline-block;
         user-select: none;
+        border: 1px solid lightgrey;
+        border-radius: 4px;
+        padding: 10px;
+        box-shadow: 2px 2px rgba(0,0,0,.5);
+      }
+
+      .controls__select:hover {
+        cursor: pointer;
+        box-shadow: 2px 2px rgba(0,0,0,.9);
+      }
+      .controls__select:active {
+        cursor: pointer;
+        box-shadow: inset 2px 2px rgba(0,0,0,.9);
+      }
+      .controls__select--selected {
+        background: #000;
+        color: #fff;
       }
     </style>
   </head>
@@ -38,7 +62,9 @@
         <tr><td>ctrl</td><td>toggle bounding boxes</td></tr>
         </tbody>
       </table>
-      <button id="restart">restart</button>
+      <div class="controls__select" id="restart">restart</div>
+      <div class="select-fancy-ship controls__select">use plane model</div>
+      <div class="select-boring-ship controls__select--selected">use geometric model</div>
     </div>
     <script type="vertex" id="vs">
     attribute vec4 position;
