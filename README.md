@@ -2,6 +2,14 @@
 yarn
 npm start
 ```
+# Prod build:
+
+```bash
+./node_modules/.bin/webpack -p
+```
+The prod bundle will be in `dist/`
+
+Notes on exporting models from blender:
 
 Export obj from blender:
 
@@ -13,7 +21,3 @@ Then when exporting as obj select the following:
 
 Forward: -Y Forward
 Up: -Z Up
-
-
-boring ship has 144 elements, 84 vertices
-asteroid:  2184, 1092 vertices
