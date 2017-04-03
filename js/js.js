@@ -6,7 +6,12 @@ import {
   makePool, makeRect, getV3Angle, setV3Angle, setV3Length, setV3,
   log, wrapBounds, setupModelBuffer, intersects, GObject, setupBbox,
   updateGObjectMatrix, createEl, across, byId, sel
-} from './util'
+} from 'js/util'
+
+import planeModel from 'models/fancy_plane.json'
+import shipModel from 'models/shipRotatedYUp.json'
+import asteroidModel from 'models/asteroid2.json'
+
 const { m4, v3 } = twgl
 window.twgl = twgl
 window.m4 = m4, window.v3=v3
@@ -22,7 +27,7 @@ const gameState = {
   thrust: scaleFactor => .06,//across(scaleFactor, .5, 4, .06, .04),
   maxVelocity: 10,
   rotateBy: Math.PI/80,
-  numAsteroids: 1,
+  numAsteroids: 15,
   state: gameStates.beforePlaying,
   keys: {
     ctrlPressed: false,
@@ -99,7 +104,7 @@ function updateShip(ship, gameState, t) {
 
   v3.add(ship.position, ship.velocity, ship.position)
 
-  wrapBounds(ship, gl.canvas)
+  wrapBounds(ship, gl.canvas, gameState.globalScaleFactor)
 
   if (gameState.keys.spacePressed) throttledMakeBullet()
 
@@ -122,7 +127,7 @@ function updateShip(ship, gameState, t) {
 function defaultUpdate(gObj, gameState, t) {
   var gl = gameState.gl
   v3.add(gObj.position, gObj.velocity, gObj.position)
-  wrapBounds(gObj, gl.canvas)
+  wrapBounds(gObj, gl.canvas, gameState.globalScaleFactor)
   scaleObj(gObj, gameState.globalScaleFactor)
   updateGObjectMatrix(gObj)
   updateBbox(gObj)
@@ -198,7 +203,7 @@ function handlePlayingKeyDown(keyCode) {
 }
 
 window.on('keyup', ({keyCode}) => {
-  //if (gameState.state != gameStates.playing) { return }
+  if (gameState.state != gameStates.playing) { return }
   console.log('keyup', keyCode);
   if (keyCode == keyNames.up || keyCode == keyNames.w)
     gameState.keys.upPressed = false
@@ -224,11 +229,11 @@ window.on('mouseup', () => {
 window.on('keydown', ({keyCode}) => {
   console.log('keydown: ', keyCode)
 
-  // if (gameState.state == gameStates.playing)
+  if (gameState.state == gameStates.playing)
     handlePlayingKeyDown(keyCode)
 
-  // if (gameState.state == gameStates.beforePlaying)
-    // gameState.state = gameStates.playing
+  if (gameState.state == gameStates.beforePlaying)
+    gameState.state = gameStates.playing
 })
 
 function setupFancyShip(position, shipData) {
@@ -299,13 +304,13 @@ function initAsteroid(screenSize, asteroidData, ship) {
   asteroid.bufferInfo = asteroidData.bufferInfo
   updateGObjectMatrix(asteroid)
   setupBbox(asteroid, asteroidData.modelData.vertices)
-  // do {
+  do {
     asteroid.position = v3.create(
       lerp(rand(), 0, screenSize.w),
       lerp(rand(), 0, screenSize.h),
       0
     )
-  // } while (intersects(ship, asteroid))
+  } while (intersects(ship, asteroid))
   return asteroid
 }
 
@@ -379,9 +384,11 @@ function setupCanvases() {
   const container = createEl('div')
   container.style.position = 'relative'
   const canvas = createCanvas(gameState.canvasSize.w, gameState.canvasSize.h)
+  canvas.className = 'canvas'
   canvas.style.boxShadow = '1px 1px 4px hsla(0, 0%, 0%, 0.8)'
   canvas.style.zIndex = -1
-  const txtCanvas = createCanvas(gameState.canvasSize.w, gameState.canvasSize.h)
+  const txtCanvas = createCanvas()
+  txtCanvas.className = 'canvas'
   txtCanvas.setAttribute('width', gameState.canvasSize.w)
   txtCanvas.setAttribute('height', gameState.canvasSize.h)
   txtCanvas.style.position = 'absolute'
@@ -397,6 +404,13 @@ function setupCanvases() {
 }
 
 function resetGame() {
+
+  gameState.keys.upPressed = false
+  gameState.keys.downPressed = false
+  gameState.keys.leftPressed = false
+  gameState.keys.rightPressed = false
+  gameState.keys.spacePressed = false
+
   var ship = gameState.getShip()
   var gl = gameState.gl
   gameState.objects = gameState.objects.filter(o => o.type === gameTypes.ship)
@@ -430,21 +444,45 @@ function switchShipType(currentShipType, gameState) {
   gameState.objects.splice(0,1,newShip)
 }
 
+function setupSelectScale() {
+  var selectHalf = sel('.select-scale-half')
+  var selectOne = sel('.select-scale-one')
+  var selectTwo = sel('.select-scale-two')
+  var selectFour = sel('.select-scale-four')
+  var selectedRgx = /--selected/
+  function onSelect(selected, scale) {
+    selectHalf.className = selectHalf.className.replace(selectedRgx, '')
+    selectOne.className = selectOne.className.replace(selectedRgx, '')
+    selectTwo.className = selectTwo.className.replace(selectedRgx, '')
+    selectFour.className = selectFour.className.replace(selectedRgx, '')
+    selected.className = selected.className + '--selected'
+    gameState.globalScaleFactor = scale
+  }
+  selectHalf.on('click', partial(onSelect, selectHalf, .5))
+  selectOne.on('click', partial(onSelect, selectOne, 1))
+  selectTwo.on('click', partial(onSelect, selectTwo, 2))
+  selectFour.on('click', partial(onSelect, selectFour, 4))
+}
+
 function setupControls() {
   byId('restart').on('click', resetGame)
-  sel('.select-fancy-ship').on('click', function() {
+  var fancyShipButton = sel('.select-fancy-ship')
+  var boringShipButton = sel('.select-boring-ship')
+  setupSelectScale()
+
+  fancyShipButton.on('click', function() {
     var currentShipType = gameState.getShip().shipType
     if (currentShipType != shipTypes.fancy) {
       this.className = 'select-fancy-ship controls__select--selected'
       switchShipType(currentShipType, gameState)
-      sel('.select-boring-ship').className = 'select-fancy-ship controls__select'
+      boringShipButton.className = 'select-fancy-ship controls__select'
     }
   })
-  sel('.select-boring-ship').on('click', function() {
+  boringShipButton.on('click', function() {
     var currentShipType = gameState.getShip().shipType
     if (currentShipType != shipTypes.boring) {
       this.className = 'select-boring-ship controls__select--selected'
-      sel('.select-fancy-ship').className = 'select-fancy-ship controls__select'
+      fancyShipButton.className = 'select-fancy-ship controls__select'
       switchShipType(currentShipType, gameState)
     }
   })
@@ -452,6 +490,8 @@ function setupControls() {
 
 function drawGameText(gameState) {
   var ctx = gameState.txtCtx
+  gameState.txtCanvas.width = gameState.txtCanvas.clientWidth
+  gameState.txtCanvas.height = gameState.txtCanvas.clientHeight
   ctx.clearRect(0, 0, gameState.txtCanvas.clientWidth, gameState.txtCanvas.clientHeight)
   ctx.fillStyle = 'white'
   ctx.font = '24px monospace'
@@ -504,18 +544,17 @@ function main(modelsData) {
     }
 
     gameState.objects = gameState.objects.filter(gObj => !(gObj.shouldRemove))
-    if (!gameState.objects.filter(o => o.type == gameTypes.asteroid).length)
+    if (gameState.state !== gameStates.gameOver && !gameState.objects.filter(o => o.type == gameTypes.asteroid).length)
       gameState.state = gameStates.gameWon
     requestAnimationFrame(loop)
   }
   requestAnimationFrame(loop)
 }
 
-gameState.shipType = shipTypes.fancy
-gameState.shipType = shipTypes.boring
-awaitAll(
+/* awaitAll(
   partial(getJson, 'models/fancy_plane.json'),
   partial(getJson, 'models/shipRotatedYUp.json'),
   partial(getJson, 'models/asteroid2.json'),
   main
-)
+) */
+main([planeModel, shipModel, asteroidModel])

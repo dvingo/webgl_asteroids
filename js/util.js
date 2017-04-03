@@ -90,8 +90,8 @@ export function objFromStrs() {
 
 export var createCanvas = (width, height) => {
   const canvas = createEl('canvas')
-  canvas.style.width = width + 'px'
-  canvas.style.height = height + 'px'
+/*   canvas.style.width = width + 'px'
+  canvas.style.height = height + 'px' */
   return canvas
 }
 
@@ -256,19 +256,20 @@ export const setV3Angle = (v, a) => {
   v[1] = Math.sin(a) * len
 }
 
-// TODO pass globalScaleFactor and multiple by width and height
-export const wrapBounds = (gObj, canvas) => {
-  if (gObj.position[0] + gObj.width < 0)
-    gObj.position[0] = canvas.clientWidth + gObj.width/2
+export const wrapBounds = (gObj, canvas, globalScaleFactor) => {
+  var w = gObj.width * globalScaleFactor
+  var h = gObj.height * globalScaleFactor
+  if (gObj.position[0] + w < 0)
+    gObj.position[0] = canvas.clientWidth + w/2
 
-  if (gObj.position[0] > canvas.clientWidth + gObj.width)
-    gObj.position[0] = -gObj.width/2
+  if (gObj.position[0] > canvas.clientWidth + w)
+    gObj.position[0] = -w/2
 
-  if (gObj.position[1] + gObj.height < 0)
-    gObj.position[1] = canvas.clientHeight + gObj.height/2
+  if (gObj.position[1] + h < 0)
+    gObj.position[1] = canvas.clientHeight + h/2
 
-  if (gObj.position[1] > canvas.clientHeight + gObj.height)
-    gObj.position[1] = -gObj.height/2
+  if (gObj.position[1] > canvas.clientHeight + h)
+    gObj.position[1] = -h/2
 }
 
 /**
