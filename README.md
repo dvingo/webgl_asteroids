@@ -1,7 +1,13 @@
+A simple clone of the classic asteroids game in JavaScript with the rendering
+ in WebGL.
+
+# Dev setup
+
 ```bash
 yarn
 npm start
 ```
+
 # Prod build:
 
 ```bash
@@ -21,3 +27,7 @@ Then when exporting as obj select the following:
 
 Forward: -Y Forward
 Up: -Z Up
+
+A plane model is used from:
+
+https://www.turbosquid.com/3d-models/free-spowith-f1-camel-3d-model/516387
