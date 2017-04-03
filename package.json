@@ -1,7 +1,8 @@
 {
   "scripts": {
     "build": "webpack",
-    "start": "webpack-dev-server"
+    "start": "webpack-dev-server",
+    "build:prod": "webpack -p"
   },
   "dependencies": {
     "chroma-js": "^1.2.2",
