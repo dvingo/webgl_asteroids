@@ -31,3 +31,7 @@ Up: -Z Up
 A plane model is used from:
 
 https://www.turbosquid.com/3d-models/free-spowith-f1-camel-3d-model/516387
+
+The Three.js Obj to JSON parser is also used to help import the 3d models into
+the game.
+https://github.com/mrdoob/three.js/blob/dev/utils/converters/obj/convert_obj_three.py
