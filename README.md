@@ -1,6 +1,10 @@
 A simple clone of the classic asteroids game in JavaScript with the rendering
  in WebGL.
 
+The game is hosted here:
+
+http://dvingo.github.io/2017/04/03/asteroids.html
+
 # Dev setup
 
 ```bash
