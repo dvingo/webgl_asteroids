@@ -383,6 +383,7 @@ function drawGameObject(gameObject, gameState, programInfo) {
 function setupCanvases() {
   const container = createEl('div')
   container.style.position = 'relative'
+  container.style.border = '1px dashed #fff'
   const canvas = createCanvas(gameState.canvasSize.w, gameState.canvasSize.h)
   canvas.className = 'canvas'
   canvas.style.boxShadow = '1px 1px 4px hsla(0, 0%, 0%, 0.8)'

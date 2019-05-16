@@ -1,7 +1,7 @@
 const path = require('path')
 
 module.exports = {
-  entry: './js/js.js',
+  entry: './js/main.js',
   output: {
     filename: 'bundle.js',
     publicPath: '/',

@@ -9,14 +9,15 @@ http://dvingo.github.io/2017/04/03/asteroids.html
 
 ```bash
 yarn
-npm start
+yarn start
 ```
 
 # Prod build:
 
 ```bash
-npm run build:prod
+yarn build:prod
 ```
+
 The prod bundle will be in `dist/`
 
 # Notes on exporting models from blender:
